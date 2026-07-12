@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# builds
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# database (local dev)
+data/
+*.sqlite
+*.sqlite3
+
+# logs
+*-debug.log*
+npm-debug.log*
+
+# editor / OS
+.DS_Store
+*.pem
+.vercel
+
+# claude local settings
+.claude/settings.local.json
