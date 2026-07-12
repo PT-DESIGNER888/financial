@@ -1,7 +1,8 @@
 'use client';
 
-import React from 'react';
-import { IconChevronDown } from '@/components/icons';
+import React, { useRef, useState } from 'react';
+import { IconCheck, IconChevronDown } from '@/components/icons';
+import { Popover } from '@/components/popover';
 
 /**
  * ชุด form control กลางของทั้งแอป — ใช้ที่นี่ที่เดียวเพื่อให้หน้าตา/ธีมสว่าง-มืดสม่ำเสมอ
@@ -56,24 +57,78 @@ export const TextInput = React.forwardRef<HTMLInputElement, TextInputProps>(
 );
 TextInput.displayName = 'TextInput';
 
-type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
+/**
+ * dropdown ที่วาดรายการเอง (แทน <select> native ที่แต่ง option ไม่ได้)
+ * แผงรายการเข้าธีมสว่าง/มืด มี check ที่ตัวเลือกปัจจุบัน เปิดใน modal ได้ไม่โดนตัด
+ */
+export function SelectMenu<T extends string>({
+  value,
+  onChange,
+  options,
+  size = 'md',
+  className,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: string }[];
+  size?: 'sm' | 'md';
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const current = options.find((o) => o.value === value);
 
-/** <select> ที่ตัดลูกศร native ออกแล้วใส่ chevron เอง ให้เข้าธีมทั้งสว่าง/มืด */
-export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
-  ({ className, children, ...props }, ref) => (
-    <div className="relative">
-      <select
-        ref={ref}
-        className={`${inputCls} cursor-pointer appearance-none pr-9 ${className ?? ''}`}
-        {...props}
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+        className={`${size === 'md' ? inputCls : 'rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-primary focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white'} flex cursor-pointer items-center justify-between gap-2 text-left ${className ?? ''}`}
       >
-        {children}
-      </select>
-      <IconChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-    </div>
-  ),
-);
-Select.displayName = 'Select';
+        <span className="truncate">{current?.label ?? '—'}</span>
+        <IconChevronDown
+          className={`size-4 shrink-0 text-gray-400 transition-transform dark:text-gray-500 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && btnRef.current && (
+        <Popover
+          anchor={btnRef.current}
+          onClose={() => setOpen(false)}
+          matchWidth={size === 'md'}
+          minWidth={144}
+        >
+          <ul role="listbox" className="max-h-64 overflow-y-auto py-1">
+            {options.map((o) => {
+              const selected = o.value === value;
+              return (
+                <li key={o.value} role="option" aria-selected={selected}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange(o.value);
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left ${size === 'sm' ? 'text-xs' : 'text-sm'} ${
+                      selected
+                        ? 'bg-primary/10 font-semibold text-primary'
+                        : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {o.label}
+                    {selected && <IconCheck className="size-4 shrink-0" />}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Popover>
+      )}
+    </>
+  );
+}
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger';
 type ButtonSize = 'sm' | 'md';

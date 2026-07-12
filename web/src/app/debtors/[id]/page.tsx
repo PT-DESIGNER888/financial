@@ -20,7 +20,7 @@ import {
   Field,
   ModalButtons,
   Segmented,
-  Select,
+  SelectMenu,
   TextInput,
 } from '@/components/form';
 import { PaymentModal } from '@/components/payment-modal';
@@ -1185,15 +1185,16 @@ function AttachmentsSection({ debtorId }: { debtorId: string }) {
           ไฟล์แนบ (สลิป / บัตร)
         </h2>
         <div className="flex items-center gap-2">
-          <Select
+          <SelectMenu
+            size="sm"
             value={kind}
-            onChange={(e) => setKind(e.target.value as AttachmentKind)}
-            className="w-auto px-2 py-1.5 text-xs"
-          >
-            <option value="SLIP">สลิปโอน</option>
-            <option value="ID_CARD">บัตรประชาชน</option>
-            <option value="OTHER">อื่นๆ</option>
-          </Select>
+            onChange={setKind}
+            options={[
+              { value: 'SLIP', label: 'สลิปโอน' },
+              { value: 'ID_CARD', label: 'บัตรประชาชน' },
+              { value: 'OTHER', label: 'อื่นๆ' },
+            ]}
+          />
           <label className="cursor-pointer rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90">
             {uploading ? 'กำลังอัป…' : 'อัปโหลด'}
             <input
