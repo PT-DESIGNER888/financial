@@ -1,3 +1,4 @@
+import { join } from 'path';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -33,8 +34,10 @@ const entities = [
 ];
 
 /**
- * production: DATABASE_URL เป็น postgres (Supabase)
- * dev บนเครื่อง: ไม่ตั้ง DATABASE_URL → ใช้ไฟล์ SQLite (api/data/dev.sqlite)
+ * production: DATABASE_URL เป็น postgres (Supabase) — ใช้ migration เท่านั้น
+ *   สคีมาเปลี่ยนผ่านไฟล์ใน src/migrations/ (รันอัตโนมัติตอนบูต)
+ *   เพิ่ม migration ใหม่: npm run typeorm -- migration:generate src/migrations/ชื่อ
+ * dev บนเครื่อง: ไม่ตั้ง DATABASE_URL → SQLite + synchronize (ไวต่อการลองของ)
  */
 function buildDbOptions(config: ConfigService): TypeOrmModuleOptions {
   const url = config.get<string>('DATABASE_URL');
@@ -43,7 +46,9 @@ function buildDbOptions(config: ConfigService): TypeOrmModuleOptions {
       type: 'postgres',
       url,
       entities,
-      synchronize: true, // v1: ให้ TypeORM สร้างตารางเอง
+      synchronize: false, // ห้ามให้ TypeORM แก้ตาราง production เอง
+      migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
+      migrationsRun: true, // บูตแล้วรัน migration ที่ยังไม่ได้รันให้อัตโนมัติ
       ssl: { rejectUnauthorized: false }, // Supabase ต้องใช้ SSL
     };
   }

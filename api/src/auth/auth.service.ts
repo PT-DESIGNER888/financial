@@ -18,17 +18,22 @@ export class AuthService implements OnApplicationBootstrap {
     private config: ConfigService,
   ) {}
 
-  /** สร้างผู้ใช้จาก env ตอนสตาร์ทครั้งแรก (ระบบใช้คนเดียว)
-   *  ไม่ทับรหัสของผู้ใช้ที่มีอยู่แล้ว — เพื่อให้การเปลี่ยนรหัสในแอปคงอยู่หลัง restart
-   *  (ถ้าลืมรหัส: ลบ user ใน DB แล้วสตาร์ทใหม่ ระบบจะสร้างจาก env ให้) */
+  /** ผู้ใช้อยู่ใน DB ล้วนๆ ไม่ผูกกับ env — สตาร์ทครั้งแรก (ตารางว่าง)
+   *  seed เจ้าของระบบ admin/admin1234 แล้วให้เปลี่ยนรหัสในหน้าตั้งค่า
+   *  (ถ้าลืมรหัส: ลบแถวในตาราง users แล้ว restart ระบบจะ seed ให้ใหม่) */
   async onApplicationBootstrap() {
-    const username = this.config.get<string>('ADMIN_USERNAME');
-    const password = this.config.get<string>('ADMIN_PASSWORD');
-    if (!username || !password) return;
-    const existing = await this.users.findOneBy({ username });
-    if (existing) return;
-    const passwordHash = await bcrypt.hash(password, 10);
-    await this.users.save(this.users.create({ username, passwordHash }));
+    if ((await this.users.count()) > 0) return;
+    await this.users.save(
+      this.users.create({
+        username: 'admin',
+        passwordHash: await bcrypt.hash('admin1234', 10),
+        displayName: 'เจ้าของระบบ',
+        role: 'OWNER',
+      }),
+    );
+    console.warn(
+      '[auth] สร้างผู้ใช้เริ่มต้น admin/admin1234 — เข้าระบบแล้วเปลี่ยนรหัสผ่านทันทีที่หน้าตั้งค่า',
+    );
   }
 
   /** เปลี่ยนรหัสผ่าน — ตรวจรหัสเดิมก่อน */
@@ -55,6 +60,12 @@ export class AuthService implements OnApplicationBootstrap {
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
       throw new UnauthorizedException('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
     }
+    if (!user.isActive) {
+      throw new UnauthorizedException('บัญชีนี้ถูกระงับการใช้งาน');
+    }
+    await this.users.update(user.id, {
+      lastLoginAt: new Date().toISOString(),
+    });
     return this.issueTokens(user);
   }
 
@@ -63,7 +74,10 @@ export class AuthService implements OnApplicationBootstrap {
       const payload = await this.jwt.verifyAsync(refreshToken, {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
       });
-      const user = await this.users.findOneByOrFail({ id: payload.sub });
+      const user = await this.users.findOneByOrFail({
+        id: payload.sub,
+        isActive: true,
+      });
       return this.issueTokens(user);
     } catch {
       throw new UnauthorizedException('refresh token ไม่ถูกต้องหรือหมดอายุ');
@@ -77,7 +91,8 @@ export class AuthService implements OnApplicationBootstrap {
   }
 
   private async issueTokens(user: User) {
-    const payload = { sub: user.id, username: user.username };
+    // role ติดไปใน token เผื่ออนาคตมี STAFF แล้วต้องคุมสิทธิ์
+    const payload = { sub: user.id, username: user.username, role: user.role };
     return {
       accessToken: await this.jwt.signAsync(payload, {
         secret: this.config.getOrThrow<string>('JWT_SECRET'),
