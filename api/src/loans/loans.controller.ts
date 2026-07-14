@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -23,10 +24,13 @@ import {
 } from 'class-validator';
 import { LoansService } from './loans.service';
 
+const CYCLES = ['DAILY', 'WEEKLY', 'TEN_DAY', 'MONTHLY'] as const;
+type Cycle = (typeof CYCLES)[number];
+
 class CreateLoanDto {
   @IsString() @IsNotEmpty() debtorId: string;
 
-  /** REVOLVING = ดอกลอย/คงที่ (ค่าเริ่มต้น), INSTALLMENT = ผ่อนงวดงวดเท่ากัน */
+  /** REVOLVING = ดอกลอย/คงที่ (ค่าเริ่มต้น), INSTALLMENT = ผ่อนเป็นงวด */
   @IsOptional() @IsIn(['REVOLVING', 'INSTALLMENT'])
   type?: 'REVOLVING' | 'INSTALLMENT';
 
@@ -40,26 +44,66 @@ class CreateLoanDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0)
   arrears?: number;
 
-  /** อัตราดอก (ไม่ใช้กับผ่อนงวด) */
-  @ValidateIf((o) => o.type !== 'INSTALLMENT')
+  /** อัตราดอก — ดอกลอย/คงที่: %/รอบ, ลดต้นลดดอก: %/งวดจากต้นคงเหลือ */
+  @ValidateIf((o) => o.type !== 'INSTALLMENT' || o.amortized === true)
   @Type(() => Number) @IsNumber() @IsPositive() interestRatePercent?: number;
 
-  @IsIn(['DAILY', 'TEN_DAY']) cycle: 'DAILY' | 'TEN_DAY';
+  @IsIn(CYCLES) cycle: Cycle;
 
   @IsOptional() @IsIn(['FLOATING', 'FLAT'])
   interestMode?: 'FLOATING' | 'FLAT';
 
-  /** ผ่อนงวด: จำนวนงวด */
+  /** ผ่อนเป็นงวด: จำนวนงวด */
   @ValidateIf((o) => o.type === 'INSTALLMENT')
   @Type(() => Number) @IsInt() @IsPositive() installmentCount?: number;
 
-  /** ผ่อนงวด: ยอดผ่อนรวมทั้งสัญญา (ต้น + ดอกรวม) */
-  @ValidateIf((o) => o.type === 'INSTALLMENT')
-  @Type(() => Number) @IsNumber() @IsPositive() installmentTotal?: number;
+  /** ผ่อนดอกคงที่: ดอกรวมทั้งสัญญา (บาท, 0 ได้) */
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0)
+  totalInterest?: number;
+
+  /** ผ่อนดอกคงที่ (รูปแบบเดิม): ยอดผ่อนรวม (ต้น + ดอกรวม) */
+  @IsOptional() @Type(() => Number) @IsNumber() @IsPositive()
+  installmentTotal?: number;
+
+  /** ผ่อนเป็นงวด: true = ลดต้นลดดอก */
+  @IsOptional() @IsBoolean() amortized?: boolean;
+
+  /** ค่าธรรมเนียมเพิ่มเติม รวมเข้ายอดชำระ */
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) fee?: number;
+
+  /** วันครบกำหนดงวดแรก (เลือกเอง) */
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) firstDueDate?: string;
+
+  /** ปัดยอดต่องวดเป็นบาทเต็ม เศษไปงวดสุดท้าย */
+  @IsOptional() @IsBoolean() roundInstallments?: boolean;
 
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) startDate?: string;
 
   @IsOptional() @IsString() note?: string;
+}
+
+/** พรีวิวแผนผ่อน — ฟิลด์เดียวกับตอนสร้าง แต่ไม่ต้องมีลูกหนี้ */
+class PreviewLoanDto {
+  @Type(() => Number) @IsNumber() @IsPositive() principalOriginal: number;
+
+  @Type(() => Number) @IsInt() @IsPositive() installmentCount: number;
+
+  @IsIn(CYCLES) cycle: Cycle;
+
+  @IsOptional() @IsBoolean() amortized?: boolean;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) totalInterest?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @IsPositive()
+  interestRatePercent?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) fee?: number;
+
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) startDate?: string;
+
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) firstDueDate?: string;
+
+  @IsOptional() @IsBoolean() roundInstallments?: boolean;
 }
 
 class ConvertDeadDto {
@@ -103,6 +147,12 @@ export class LoansController {
   @Get()
   findAll() {
     return this.loans.findAll();
+  }
+
+  /** พรีวิวตารางงวด + ยอดสรุป ก่อนกดเปิดยอดจริง */
+  @Post('preview')
+  preview(@Body() dto: PreviewLoanDto) {
+    return this.loans.preview(dto);
   }
 
   @Get(':id')

@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { InstallmentSchedule, Loan, LoanListItem } from '@/lib/types';
+import type {
+  InstallmentPlanPreview,
+  InstallmentSchedule,
+  Loan,
+  LoanCycle,
+  LoanListItem,
+} from '@/lib/types';
 import { invalidateMoney, qk } from './keys';
 
 /** สัญญาทั้งหมดพร้อมยอดสรุป — หน้า "สัญญาเงินกู้" */
@@ -16,13 +22,45 @@ export interface CreateLoanInput {
   type?: 'REVOLVING' | 'INSTALLMENT';
   principalOriginal: number;
   interestRatePercent?: number;
-  cycle: 'DAILY' | 'TEN_DAY';
+  cycle: LoanCycle;
   interestMode?: 'FLOATING' | 'FLAT';
   outstandingPrincipal?: number;
   arrears?: number;
   installmentCount?: number;
-  installmentTotal?: number;
+  totalInterest?: number;
+  amortized?: boolean;
+  fee?: number;
+  firstDueDate?: string;
+  roundInstallments?: boolean;
+  startDate?: string;
   note?: string;
+}
+
+export interface PreviewLoanInput {
+  principalOriginal: number;
+  installmentCount: number;
+  cycle: LoanCycle;
+  amortized?: boolean;
+  totalInterest?: number;
+  interestRatePercent?: number;
+  fee?: number;
+  startDate?: string;
+  firstDueDate?: string;
+  roundInstallments?: boolean;
+}
+
+/** พรีวิวตารางงวด — คำนวณฝั่ง API ด้วยโค้ดเดียวกับตอนเปิดยอดจริง */
+export function useLoanPreview(input: PreviewLoanInput | null) {
+  return useQuery({
+    queryKey: ['loan', 'preview', input],
+    queryFn: () =>
+      api<InstallmentPlanPreview>('/loans/preview', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    enabled: !!input,
+    placeholderData: (prev) => prev,
+  });
 }
 
 export function useLoanSchedule(loanId: string, enabled = true) {

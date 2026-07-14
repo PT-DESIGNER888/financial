@@ -6,8 +6,142 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ActivityService } from '../activity/activity.service';
-import { addDays, diffDays, todayStr } from '../common/date.util';
-import { Loan } from '../entities/loan.entity';
+import { addDays, addMonths, diffDays, todayStr } from '../common/date.util';
+import { Loan, LoanCycle } from '../entities/loan.entity';
+
+/** จำนวนวันต่อรอบ (MONTHLY ใช้เลขเดือนแทน — ดู dueDateAt) */
+const cycleStep: Record<Exclude<LoanCycle, 'MONTHLY'>, number> = {
+  DAILY: 1,
+  WEEKLY: 7,
+  TEN_DAY: 10,
+};
+
+/** วันครบกำหนดงวดที่ k (k เริ่ม 1) นับจากวันครบกำหนดงวดแรก */
+function dueDateAt(firstDue: string, cycle: LoanCycle, k: number): string {
+  if (cycle === 'MONTHLY') return addMonths(firstDue, k - 1);
+  return addDays(firstDue, (k - 1) * cycleStep[cycle]);
+}
+
+/** วันครบกำหนดงวดแรกอัตโนมัติ = วันเปิดยอด + 1 รอบ */
+function defaultFirstDue(startDate: string, cycle: LoanCycle): string {
+  if (cycle === 'MONTHLY') return addMonths(startDate, 1);
+  return addDays(startDate, cycleStep[cycle]);
+}
+
+export interface InstallmentPlanInput {
+  principalOriginal: number;
+  installmentCount: number;
+  cycle: LoanCycle;
+  startDate: string;
+  firstDueDate?: string | null;
+  /** true = ลดต้นลดดอก (ดอกจากต้นคงเหลือต่องวด), false = ดอกคงที่หารงวดเท่ากัน */
+  amortized?: boolean;
+  /** flat: ดอกรวมทั้งสัญญา (บาท) */
+  totalInterest?: number;
+  /** amortized: % ดอกต่องวด คิดจากต้นคงเหลือ */
+  interestRatePercent?: number;
+  fee?: number;
+  roundInstallments?: boolean;
+}
+
+export interface PlanRow {
+  n: number;
+  dueDate: string;
+  /** แยกต้น/ดอกเฉพาะลดต้นลดดอก (flat = null) */
+  principal: number | null;
+  interest: number | null;
+  scheduled: number;
+}
+
+export interface InstallmentPlan {
+  rows: PlanRow[];
+  principalOriginal: number;
+  interestTotal: number;
+  fee: number;
+  installmentTotal: number;
+  installmentCount: number;
+  /** งวดปกติ (flat = ทุกงวดเท่ากัน, amortized = งวดแรกไม่รวมค่าธรรมเนียม) */
+  installmentAmount: number;
+  firstDueDate: string;
+  lastDueDate: string;
+}
+
+/**
+ * สร้างแผนผ่อนทั้งสัญญา — ใช้ทั้งตอน preview และตอนเปิดยอดจริง
+ * เศษจากการหาร/ปัดถูกซับที่งวดสุดท้ายเสมอ เพื่อให้ผลรวมตรงกับยอดเต็ม
+ */
+export function buildInstallmentPlan(
+  input: InstallmentPlanInput,
+): InstallmentPlan {
+  const n = input.installmentCount;
+  const principal = round2(input.principalOriginal);
+  const fee = round2(input.fee ?? 0);
+  const firstDue =
+    input.firstDueDate ?? defaultFirstDue(input.startDate, input.cycle);
+  const rows: PlanRow[] = [];
+
+  if (input.amortized) {
+    // ลดต้นลดดอก: ต้นเท่ากันทุกงวด ดอกคิดจากต้นคงเหลือ (ปัดดอกเป็นบาทเต็มตามธรรมเนียมเดิม)
+    const rate = input.interestRatePercent ?? 0;
+    const perPrincipal = input.roundInstallments
+      ? Math.floor(principal / n)
+      : round2(principal / n);
+    let outstanding = principal;
+    let interestTotal = 0;
+    for (let k = 1; k <= n; k++) {
+      const p = k === n ? round2(outstanding) : perPrincipal;
+      const i = Math.round((outstanding * rate) / 100);
+      interestTotal = round2(interestTotal + i);
+      rows.push({
+        n: k,
+        dueDate: dueDateAt(firstDue, input.cycle, k),
+        principal: p,
+        interest: i,
+        scheduled: round2(p + i + (k === 1 ? fee : 0)),
+      });
+      outstanding = round2(outstanding - p);
+    }
+    const installmentTotal = round2(principal + interestTotal + fee);
+    return {
+      rows,
+      principalOriginal: principal,
+      interestTotal,
+      fee,
+      installmentTotal,
+      installmentCount: n,
+      installmentAmount: round2(rows[0].scheduled - fee),
+      firstDueDate: firstDue,
+      lastDueDate: rows[n - 1].dueDate,
+    };
+  }
+
+  // ดอกคงที่: ต้น + ดอกรวม + ค่าธรรมเนียม หารงวดเท่ากัน งวดสุดท้ายซับเศษ
+  const interestTotal = round2(input.totalInterest ?? 0);
+  const installmentTotal = round2(principal + interestTotal + fee);
+  const per = input.roundInstallments
+    ? Math.floor(installmentTotal / n)
+    : round2(installmentTotal / n);
+  for (let k = 1; k <= n; k++) {
+    rows.push({
+      n: k,
+      dueDate: dueDateAt(firstDue, input.cycle, k),
+      principal: null,
+      interest: null,
+      scheduled: k === n ? round2(installmentTotal - per * (n - 1)) : per,
+    });
+  }
+  return {
+    rows,
+    principalOriginal: principal,
+    interestTotal,
+    fee,
+    installmentTotal,
+    installmentCount: n,
+    installmentAmount: per,
+    firstDueDate: firstDue,
+    lastDueDate: rows[n - 1].dueDate,
+  };
+}
 
 @Injectable()
 export class LoansService {
@@ -35,11 +169,15 @@ export class LoansService {
       return diff > 0 && diff % 10 === 0;
     }
     if (loan.status === 'INSTALLMENT') {
-      const step = loan.cycle === 'DAILY' ? 1 : 10;
-      const diff = diffDays(loan.startDate, d);
-      return (
-        diff > 0 && diff % step === 0 && diff / step <= (loan.installmentCount ?? 0)
-      );
+      const n = loan.installmentCount ?? 0;
+      const firstDue =
+        loan.firstDueDate ?? defaultFirstDue(loan.startDate, loan.cycle);
+      for (let k = 1; k <= n; k++) {
+        const c = diffDays(dueDateAt(firstDue, loan.cycle, k), d);
+        if (c === 0) return true;
+        if (c < 0) return false; // งวดถัดๆ ไปยิ่งไกลกว่า d — เลิกหา
+      }
+      return false;
     }
     const diff = diffDays(loan.startDate, d);
     if (diff <= 0) return false;
@@ -60,35 +198,54 @@ export class LoansService {
     if (loan.installmentCount == null || loan.installmentTotal == null) {
       return null;
     }
-    const step = loan.cycle === 'DAILY' ? 1 : 10;
     const n = loan.installmentCount;
-    const per = loan.installmentAmount ?? round2(loan.installmentTotal / n);
+    const total = loan.installmentTotal;
     const remaining = loan.deadBalance ?? 0;
-    const paidTotal = Math.max(0, round2(loan.installmentTotal - remaining));
+    const paidTotal = Math.max(0, round2(total - remaining));
+
+    // แผนต่องวด: ลดต้นลดดอกสร้างใหม่จากเงื่อนไข (deterministic), ดอกคงที่ใช้งวดที่ตรึงไว้
+    let planRows: PlanRow[];
+    if (loan.amortized) {
+      planRows = buildInstallmentPlan({
+        principalOriginal: loan.principalOriginal,
+        installmentCount: n,
+        cycle: loan.cycle,
+        startDate: loan.startDate,
+        firstDueDate: loan.firstDueDate,
+        amortized: true,
+        interestRatePercent: loan.interestRatePercent,
+        fee: loan.fee,
+        roundInstallments: loan.roundInstallments,
+      }).rows;
+    } else {
+      const firstDue =
+        loan.firstDueDate ?? defaultFirstDue(loan.startDate, loan.cycle);
+      const per = loan.installmentAmount ?? round2(total / n);
+      planRows = Array.from({ length: n }, (_, i) => {
+        const k = i + 1;
+        return {
+          n: k,
+          dueDate: dueDateAt(firstDue, loan.cycle, k),
+          principal: null,
+          interest: null,
+          scheduled: k === n ? round2(total - per * (n - 1)) : per,
+        };
+      });
+    }
 
     let remainPaid = paidTotal;
     let scheduledDueByAsOf = 0;
-    const rows = [] as {
-      n: number;
-      dueDate: string;
-      scheduled: number;
-      paid: number;
-      status: 'PAID' | 'PARTIAL' | 'DUE' | 'PENDING';
-    }[];
-    for (let k = 1; k <= n; k++) {
-      const dueDate = addDays(loan.startDate, k * step);
-      const scheduled =
-        k === n ? round2(loan.installmentTotal - per * (n - 1)) : per;
-      const applied = Math.min(remainPaid, scheduled);
+    const rows = planRows.map((r) => {
+      const applied = Math.min(remainPaid, r.scheduled);
       remainPaid = round2(remainPaid - applied);
-      const isPast = diffDays(dueDate, asOf) >= 0;
-      if (isPast) scheduledDueByAsOf = round2(scheduledDueByAsOf + scheduled);
+      const isPast = diffDays(r.dueDate, asOf) >= 0;
+      if (isPast) scheduledDueByAsOf = round2(scheduledDueByAsOf + r.scheduled);
       let status: 'PAID' | 'PARTIAL' | 'DUE' | 'PENDING';
-      if (applied >= scheduled - 0.001) status = 'PAID';
+      if (applied >= r.scheduled - 0.001) status = 'PAID';
       else if (applied > 0) status = 'PARTIAL';
       else status = isPast ? 'DUE' : 'PENDING';
-      rows.push({ n: k, dueDate, scheduled, paid: round2(applied), status });
-    }
+      return { ...r, paid: round2(applied), status };
+    });
 
     const paidCount = rows.filter((r) => r.status === 'PAID').length;
     // ยอดที่ควรจ่ายถึงวันนี้ − ที่จ่ายมาแล้ว (รวมงวดค้างเก่า) ไม่เกินยอดคงเหลือ
@@ -98,9 +255,9 @@ export class LoansService {
     );
     const next = rows.find((r) => r.status !== 'PAID');
     return {
-      installmentTotal: loan.installmentTotal,
+      installmentTotal: total,
       installmentCount: n,
-      installmentAmount: per,
+      installmentAmount: loan.installmentAmount ?? round2(total / n),
       remaining: round2(remaining),
       paidTotal,
       paidCount,
@@ -230,8 +387,11 @@ export class LoansService {
       cycle: loan.cycle,
       interestMode: loan.interestMode,
       isInstallment: this.isInstallment(loan),
+      amortized: loan.amortized,
       interestRatePercent: loan.interestRatePercent,
       principalOriginal: loan.principalOriginal,
+      outstandingPrincipal: loan.outstandingPrincipal,
+      arrears: loan.arrears,
       paidTotal,
       remaining: round2(remaining),
       totalDue: round2(paidTotal + remaining),
@@ -259,10 +419,15 @@ export class LoansService {
     outstandingPrincipal?: number;
     arrears?: number;
     interestRatePercent?: number;
-    cycle: 'DAILY' | 'TEN_DAY';
+    cycle: LoanCycle;
     interestMode?: 'FLOATING' | 'FLAT';
     installmentCount?: number;
+    totalInterest?: number;
     installmentTotal?: number;
+    amortized?: boolean;
+    fee?: number;
+    firstDueDate?: string;
+    roundInstallments?: boolean;
     startDate?: string;
     note?: string;
   }): Promise<Loan> {
@@ -270,6 +435,10 @@ export class LoansService {
     if (input.type === 'INSTALLMENT') {
       return this.createInstallment(input);
     }
+    if (input.cycle !== 'DAILY' && input.cycle !== 'TEN_DAY')
+      throw new BadRequestException(
+        'ยอดดอกลอย/คงที่รองรับรอบรายวันหรือ 10 วันเท่านั้น',
+      );
     if (!input.interestRatePercent || input.interestRatePercent <= 0)
       throw new BadRequestException('อัตราดอกต้องมากกว่า 0');
     // ยอดเก่าที่เดินอยู่แล้ว: เริ่มเก็บต่อ "วันนี้" เลย (startDate = เมื่อวาน)
@@ -302,41 +471,106 @@ export class LoansService {
     return this.loans.save(loan);
   }
 
-  /** เปิดยอดผ่อนงวด: ตรึงยอดเต็มแล้วผ่อน N งวดเท่ากันตามรอบ */
+  /** ตรวจ + สร้างแผนผ่อนจาก input (ใช้ทั้ง preview และเปิดยอดจริง) */
+  private planFromInput(input: {
+    principalOriginal: number;
+    installmentCount?: number;
+    totalInterest?: number;
+    installmentTotal?: number;
+    amortized?: boolean;
+    interestRatePercent?: number;
+    fee?: number;
+    firstDueDate?: string;
+    roundInstallments?: boolean;
+    cycle: LoanCycle;
+    startDate?: string;
+  }): { plan: InstallmentPlan; startDate: string } {
+    const count = input.installmentCount ?? 0;
+    if (!Number.isInteger(count) || count < 1)
+      throw new BadRequestException('จำนวนงวดต้องเป็นจำนวนเต็มตั้งแต่ 1 งวด');
+    if (input.principalOriginal <= 0)
+      throw new BadRequestException('เงินต้นต้องมากกว่า 0');
+    const startDate = input.startDate ?? todayStr();
+    if (input.firstDueDate && diffDays(startDate, input.firstDueDate) <= 0)
+      throw new BadRequestException('วันเริ่มชำระต้องอยู่หลังวันปล่อยกู้');
+
+    if (input.amortized) {
+      if (!input.interestRatePercent || input.interestRatePercent <= 0)
+        throw new BadRequestException('อัตราดอกต่องวดต้องมากกว่า 0');
+    } else {
+      // ดอกคงที่: รับเป็นยอดผ่อนรวม (ต้น+ดอก) แบบเดิม หรือดอกรวมตรงๆ
+      const totalInterest =
+        input.totalInterest ??
+        (input.installmentTotal != null
+          ? round2(input.installmentTotal - input.principalOriginal)
+          : undefined);
+      if (totalInterest === undefined || totalInterest < 0)
+        throw new BadRequestException('กรอกดอกเบี้ยรวมทั้งสัญญา (0 ได้)');
+      input = { ...input, totalInterest };
+    }
+    if ((input.fee ?? 0) < 0)
+      throw new BadRequestException('ค่าธรรมเนียมต้องไม่ติดลบ');
+
+    const plan = buildInstallmentPlan({
+      principalOriginal: input.principalOriginal,
+      installmentCount: count,
+      cycle: input.cycle,
+      startDate,
+      firstDueDate: input.firstDueDate ?? null,
+      amortized: input.amortized,
+      totalInterest: input.totalInterest,
+      interestRatePercent: input.interestRatePercent,
+      fee: input.fee,
+      roundInstallments: input.roundInstallments,
+    });
+    return { plan, startDate };
+  }
+
+  /** พรีวิวแผนผ่อนก่อนเปิดยอดจริง — คำนวณด้วยโค้ดเดียวกับตอนสร้าง ไม่บันทึกอะไร */
+  preview(input: Parameters<LoansService['planFromInput']>[0]) {
+    const { plan, startDate } = this.planFromInput(input);
+    return { ...plan, startDate };
+  }
+
+  /** เปิดยอดผ่อน: ตรึงยอดเต็มตามแผน (ดอกคงที่งวดเท่ากัน / ลดต้นลดดอก) */
   private async createInstallment(input: {
     debtorId: string;
     principalOriginal: number;
     installmentCount?: number;
+    totalInterest?: number;
     installmentTotal?: number;
-    cycle: 'DAILY' | 'TEN_DAY';
+    amortized?: boolean;
+    interestRatePercent?: number;
+    fee?: number;
+    firstDueDate?: string;
+    roundInstallments?: boolean;
+    cycle: LoanCycle;
     startDate?: string;
     note?: string;
   }): Promise<Loan> {
-    const count = input.installmentCount ?? 0;
-    const total = input.installmentTotal ?? 0;
-    if (!Number.isInteger(count) || count < 1)
-      throw new BadRequestException('จำนวนงวดต้องเป็นจำนวนเต็มตั้งแต่ 1 งวด');
-    if (total <= 0) throw new BadRequestException('ยอดผ่อนรวมต้องมากกว่า 0');
-    if (total < input.principalOriginal)
-      throw new BadRequestException('ยอดผ่อนรวมต้องไม่น้อยกว่าเงินต้น');
-    const startDate = input.startDate ?? todayStr();
-    const per = round2(total / count);
+    const { plan, startDate } = this.planFromInput(input);
     const loan = this.loans.create({
       debtorId: input.debtorId,
       contractNumber: await this.nextContractNumber(startDate),
       status: 'INSTALLMENT',
       cycle: input.cycle,
       interestMode: 'FLAT',
-      principalOriginal: input.principalOriginal,
-      outstandingPrincipal: input.principalOriginal,
-      interestRatePercent: 0,
+      amortized: input.amortized ?? false,
+      principalOriginal: plan.principalOriginal,
+      outstandingPrincipal: plan.principalOriginal,
+      interestRatePercent: input.amortized
+        ? (input.interestRatePercent ?? 0)
+        : 0,
       arrears: 0,
       startDate,
       accruedThrough: startDate,
-      installmentCount: count,
-      installmentTotal: round2(total),
-      installmentAmount: per,
-      deadBalance: round2(total),
+      firstDueDate: input.firstDueDate ?? null,
+      installmentCount: plan.installmentCount,
+      installmentTotal: plan.installmentTotal,
+      installmentAmount: plan.installmentAmount,
+      fee: plan.fee,
+      roundInstallments: input.roundInstallments ?? false,
+      deadBalance: plan.installmentTotal,
       note: input.note ?? null,
       fromCapital: true,
     });
@@ -630,8 +864,13 @@ export class LoansService {
   }
 }
 
-function cycleLabelTh(c: 'DAILY' | 'TEN_DAY'): string {
-  return c === 'DAILY' ? 'รายวัน' : 'ราย 10 วัน';
+function cycleLabelTh(c: LoanCycle): string {
+  return {
+    DAILY: 'รายวัน',
+    WEEKLY: 'รายสัปดาห์',
+    TEN_DAY: 'ราย 10 วัน',
+    MONTHLY: 'รายเดือน',
+  }[c];
 }
 
 function round2(n: number): number {

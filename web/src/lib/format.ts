@@ -15,12 +15,17 @@ export function thaiDate(dateStr: string): string {
   });
 }
 
-export const cycleLabel = { DAILY: 'รายวัน', TEN_DAY: 'ราย 10 วัน' } as const;
+export const cycleLabel = {
+  DAILY: 'รายวัน',
+  WEEKLY: 'รายสัปดาห์',
+  TEN_DAY: 'ราย 10 วัน',
+  MONTHLY: 'รายเดือน',
+} as const;
 
 export const statusLabel = {
   ACTIVE: 'ปกติ',
   DEAD: 'ยอดตาย',
-  INSTALLMENT: 'ผ่อนงวด',
+  INSTALLMENT: 'ผ่อนเป็นงวด',
   CLOSED: 'ปิดแล้ว',
   BAD_DEBT: 'หนี้สูญ',
 } as const;
