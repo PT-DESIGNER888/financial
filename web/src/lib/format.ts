@@ -20,7 +20,7 @@ export const cycleLabel = { DAILY: 'รายวัน', TEN_DAY: 'ราย 10 
 export const statusLabel = {
   ACTIVE: 'ปกติ',
   DEAD: 'ยอดตาย',
-  INSTALLMENT: 'ผ่อนสินค้า',
+  INSTALLMENT: 'ผ่อนงวด',
   CLOSED: 'ปิดแล้ว',
   BAD_DEBT: 'หนี้สูญ',
 } as const;

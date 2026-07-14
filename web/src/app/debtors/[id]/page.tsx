@@ -7,10 +7,15 @@ import {
   IconAdjust,
   IconBan,
   IconEdit,
+  IconFacebook,
   IconHistory,
   IconLock,
+  IconMessage,
+  IconPhone,
   IconPlus,
+  IconReceive,
   IconReopen,
+  IconSettings,
   IconTrash,
 } from '@/components/icons';
 import {
@@ -19,7 +24,6 @@ import {
   FormInput,
   ModalButtons,
   Segmented,
-  SelectMenu,
   TextInput,
 } from '@/components/form';
 import { NewLoanModal } from '@/components/new-loan-modal';
@@ -56,13 +60,34 @@ import { useDeletePayment } from '@/lib/hooks/usePayments';
 import { confirmDialog } from '@/lib/confirm-store';
 import { toast } from '@/lib/toast-store';
 import type {
+  Attachment,
   AttachmentKind,
   Debtor,
+  EmergencyContact,
   InstallmentSchedule,
   Loan,
   ScheduleRowStatus,
 } from '@/lib/types';
 
+function resolveContacts(debtor: Debtor): EmergencyContact[] {
+  if (debtor.emergencyContacts?.length) return debtor.emergencyContacts;
+  const out: EmergencyContact[] = [];
+  if (debtor.relativeName || debtor.relativePhone) {
+    out.push({
+      name: debtor.relativeName ?? '',
+      phone: debtor.relativePhone ?? undefined,
+      note: 'ญาติ',
+    });
+  }
+  if (debtor.guarantorName || debtor.guarantorPhone) {
+    out.push({
+      name: debtor.guarantorName ?? '',
+      phone: debtor.guarantorPhone ?? undefined,
+      note: 'ผู้ค้ำ',
+    });
+  }
+  return out;
+}
 
 export default function DebtorPage({
   params,
@@ -121,115 +146,153 @@ function DebtorView({ id }: { id: string }) {
     (l) => l.status === 'CLOSED' || l.status === 'BAD_DEBT',
   );
 
+  const lineHref = debtor.lineId
+    ? debtor.lineId.startsWith('http')
+      ? debtor.lineId
+      : `https://line.me/ti/p/~${debtor.lineId}`
+    : null;
+  const lineLabel = debtor.lineId
+    ? debtor.lineId.startsWith('http')
+      ? 'LINE'
+      : `LINE · ${debtor.lineId}`
+    : null;
+  const facebookLabel = debtor.facebookUrl
+    ? `Facebook · ${facebookDisplayName(debtor.facebookUrl, debtor.name)}`
+    : null;
+  const hasContact = !!(debtor.phone || debtor.facebookUrl || debtor.lineId);
+
   return (
     <div className="space-y-5">
       <div>
         <BackButton href="/debtors" label="ลูกหนี้" />
-        <div className="mt-1 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="flex flex-wrap items-center gap-2 text-[1.375rem] font-bold text-slate-900 dark:text-white">
-            <span className="truncate">{debtor.name}</span>
-            {debtor.blacklisted && (
-              <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/10 dark:text-red-400">
-                บัญชีดำ
-              </span>
-            )}
-          </h1>
-          <p className="flex flex-wrap items-center gap-x-2 text-sm text-gray-500 dark:text-gray-400">
-            {debtor.phone && (
-              <a
-                href={`tel:${debtor.phone}`}
-                className="underline decoration-gray-300 underline-offset-2 hover:text-primary dark:decoration-gray-600"
-              >
-                {debtor.phone}
-              </a>
-            )}
-            {debtor.facebookUrl && (
-              <a
-                href={debtor.facebookUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="underline decoration-gray-300 underline-offset-2 hover:text-primary dark:decoration-gray-600"
-              >
-                Facebook ↗
-              </a>
-            )}
-            {debtor.lineId && (
-              <a
-                href={
-                  debtor.lineId.startsWith('http')
-                    ? debtor.lineId
-                    : `https://line.me/ti/p/~${debtor.lineId}`
-                }
-                target="_blank"
-                rel="noreferrer"
-                className="underline decoration-gray-300 underline-offset-2 hover:text-primary dark:decoration-gray-600"
-              >
-                LINE ↗
-              </a>
-            )}
-            {debtor.note && <span>· {debtor.note}</span>}
-          </p>
-          {(debtor.guarantorName || debtor.relativeName || debtor.creditNote) && (
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {debtor.guarantorName && (
-                <>
-                  ผู้ค้ำ: {debtor.guarantorName}
-                  {debtor.guarantorPhone && (
-                    <>
-                      {' '}
-                      (
-                      <a
-                        href={`tel:${debtor.guarantorPhone}`}
-                        className="underline decoration-gray-300 underline-offset-2 hover:text-primary dark:decoration-gray-600"
-                      >
-                        {debtor.guarantorPhone}
-                      </a>
-                      )
-                    </>
-                  )}
-                </>
+        <section className="mt-2 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-[1.75rem] dark:text-white">
+                  <span className="truncate">{debtor.name}</span>
+                </h1>
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-gray-800 dark:text-gray-300">
+                  ลูกหนี้
+                </span>
+                {debtor.blacklisted && (
+                  <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/10 dark:text-red-400">
+                    บัญชีดำ
+                  </span>
+                )}
+              </div>
+              {debtor.note && (
+                <p className="mt-1 text-sm text-slate-500 dark:text-gray-400">
+                  {debtor.note}
+                </p>
               )}
-              {debtor.guarantorName && debtor.relativeName ? ' · ' : ''}
-              {debtor.relativeName && (
-                <>
-                  ญาติ: {debtor.relativeName}
-                  {debtor.relativePhone && (
-                    <>
-                      {' '}
-                      (
-                      <a
-                        href={`tel:${debtor.relativePhone}`}
-                        className="underline decoration-gray-300 underline-offset-2 hover:text-primary dark:decoration-gray-600"
-                      >
-                        {debtor.relativePhone}
-                      </a>
-                      )
-                    </>
-                  )}
-                </>
-              )}
-              {(debtor.guarantorName || debtor.relativeName) && debtor.creditNote
-                ? ' · '
-                : ''}
-              {debtor.creditNote && `เครดิต: ${debtor.creditNote}`}
-            </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingDebtor(true)}
+                className="inline-flex min-h-12 items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2.5 text-[15px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                <IconEdit className="size-5" />
+                แก้ไขข้อมูล
+              </button>
+              <Button onClick={() => setAddingLoan(true)}>
+                <IconPlus className="size-4" />
+                เปิดยอดใหม่
+              </Button>
+            </div>
+          </div>
+
+          {hasContact && (
+            <div className="mt-4 space-y-2">
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                ติดต่อ
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {debtor.phone && (
+                  <a
+                    href={`tel:${debtor.phone}`}
+                    className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-800 transition-colors hover:border-primary hover:bg-primary/5 hover:text-primary dark:border-gray-700 dark:bg-gray-950/50 dark:text-gray-100 dark:hover:border-primary"
+                  >
+                    <IconPhone className="size-4 shrink-0" />
+                    {debtor.phone}
+                  </a>
+                )}
+                {lineHref && lineLabel && (
+                  <a
+                    href={lineHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-800 transition-colors hover:border-primary hover:bg-primary/5 hover:text-primary dark:border-gray-700 dark:bg-gray-950/50 dark:text-gray-100 dark:hover:border-primary"
+                  >
+                    <IconMessage className="size-4 shrink-0" />
+                    {lineLabel}
+                  </a>
+                )}
+                {debtor.facebookUrl && facebookLabel && (
+                  <a
+                    href={debtor.facebookUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-800 transition-colors hover:border-primary hover:bg-primary/5 hover:text-primary dark:border-gray-700 dark:bg-gray-950/50 dark:text-gray-100 dark:hover:border-primary"
+                  >
+                    <IconFacebook className="size-4 shrink-0" />
+                    {facebookLabel}
+                  </a>
+                )}
+              </div>
+            </div>
           )}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            onClick={() => setEditingDebtor(true)}
-            title="แก้ไขข้อมูลลูกหนี้"
-            className="flex size-9 items-center justify-center rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            <IconEdit className="size-4" />
-          </button>
-          <Button onClick={() => setAddingLoan(true)}>
-            <IconPlus className="size-4" />
-            เปิดยอดใหม่
-          </Button>
-        </div>
-        </div>
+
+          {(() => {
+            const contacts = resolveContacts(debtor);
+            if (contacts.length === 0 && !debtor.creditNote) return null;
+            return (
+              <div className="mt-4 space-y-2">
+                {contacts.length > 0 && (
+                  <>
+                    <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                      ผู้ติดต่อคนสนิท
+                    </h2>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {contacts.map((c, i) => (
+                        <div
+                          key={`${c.name}-${i}`}
+                          className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 dark:border-gray-700 dark:bg-gray-950/50"
+                        >
+                          <p className="font-semibold text-slate-900 dark:text-white">
+                            {c.name || `ผู้ติดต่อ ${i + 1}`}
+                          </p>
+                          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600 dark:text-gray-300">
+                            {c.phone && (
+                              <a
+                                href={`tel:${c.phone}`}
+                                className="font-medium text-primary hover:underline"
+                              >
+                                {c.phone}
+                              </a>
+                            )}
+                            {c.line && <span>LINE · {c.line}</span>}
+                            {c.note && (
+                              <span className="text-slate-500 dark:text-gray-400">
+                                {c.note}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {debtor.creditNote && (
+                  <p className="text-sm text-slate-500 dark:text-gray-400">
+                    เครดิต: {debtor.creditNote}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+        </section>
       </div>
 
       {open.map((loan) => (
@@ -392,11 +455,8 @@ function LoanCard({
     loan.status === 'DEAD' ||
     loan.status === 'INSTALLMENT';
 
-  // โหลดเมื่อเปิดดูเท่านั้น (enabled) — mutation ที่กระทบยอดจะ invalidate ให้เอง
-  const { data: schedule } = useLoanSchedule(
-    loan.id,
-    isInstallment && showSchedule,
-  );
+  // โหลดตารางผ่อนของยอด INSTALLMENT เพื่อโชว์จำนวนงวดที่จ่ายแล้ว
+  const { data: schedule } = useLoanSchedule(loan.id, isInstallment);
   const { data: log } = useActivities(loan.id, showLog);
   const removePayment = useDeletePayment();
   const reopenLoan = useLoanAction('reopen');
@@ -450,12 +510,12 @@ function LoanCard({
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="flex flex-wrap items-center gap-2 font-semibold text-gray-900 dark:text-white">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-center gap-2 text-base font-semibold text-slate-900 md:text-lg dark:text-white">
             {isInstallment
-              ? `ผ่อนสินค้า · ${loan.installmentCount} งวด (${cycleLabel[loan.cycle]})`
+              ? `ผ่อนงวด · ${loan.installmentCount} งวด`
               : `${cycleLabel[loan.cycle]} · ดอก ${loan.interestRatePercent}%/รอบ`}
             {!isInstallment && loan.interestMode === 'FLAT' && (
               <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400">
@@ -463,29 +523,48 @@ function LoanCard({
               </span>
             )}
             <span
-              className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusStyle[loan.status]}`}
+              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyle[loan.status]}`}
             >
-              {statusLabel[loan.status]}
+              {isInstallment ? cycleLabel[loan.cycle] : statusLabel[loan.status]}
             </span>
           </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <p className="mt-1 text-xs text-slate-500 dark:text-gray-400">
             {loan.contractNumber && `สัญญา ${loan.contractNumber} · `}
             เปิดยอด {thaiDate(loan.startDate)} · ต้นเดิม ฿
             {baht(loan.principalOriginal)}
-            {isInstallment &&
-              ` · ผ่อนรวม ฿${baht(loan.installmentTotal)}`}
+            {isInstallment && ` · ผ่อนรวม ฿${baht(loan.installmentTotal)}`}
           </p>
         </div>
-        {isOpen && onPay && (
-          <Button size="sm" onClick={onPay} className="shrink-0">
-            รับเงิน
-          </Button>
+        {isOpen && (
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setShowManage((v) => !v)}
+              className="inline-flex min-h-12 items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2.5 text-[15px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              <IconSettings className="size-5" />
+              จัดการ
+            </button>
+            {onPay && (
+              <Button onClick={onPay}>
+                <IconReceive className="size-5" />
+                รับเงิน
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+      <div
+        className={`mt-4 grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 dark:border-gray-800 dark:bg-gray-800 ${
+          isInstallment
+            ? 'grid-cols-2 sm:grid-cols-4'
+            : 'grid-cols-3'
+        }`}
+      >
         {isInstallment ? (
           <>
+            <Stat label="ยอดเงินต้นคงเหลือ" value={loan.outstandingPrincipal} />
             <Stat label="ยอดผ่อนคงเหลือ" value={loan.deadBalance ?? 0} />
             <Stat label="งวดละ" value={loan.installmentAmount ?? 0} />
             <StatText
@@ -498,8 +577,8 @@ function LoanCard({
                         (loan.deadBalance ?? 0)) /
                         (loan.installmentAmount || 1),
                     )
-              }/${loan.installmentCount} งวด`}
-              color="text-emerald-500"
+              } / ${loan.installmentCount} งวด`}
+              color="text-emerald-700 dark:text-emerald-400"
             />
           </>
         ) : loan.status === 'DEAD' ? (
@@ -511,7 +590,7 @@ function LoanCard({
               value={payments
                 .filter((p) => p.onDeadLoan)
                 .reduce((s, p) => s + p.amount, 0)}
-              color="text-emerald-500"
+              color="text-emerald-700 dark:text-emerald-400"
             />
           </>
         ) : (
@@ -520,46 +599,43 @@ function LoanCard({
             <Stat
               label="ค้างเก่า"
               value={loan.arrears}
-              color={loan.arrears > 0 ? 'text-red-500' : undefined}
+              color={loan.arrears > 0 ? 'text-red-600 dark:text-red-400' : undefined}
             />
             <Stat
               label="ตัดต้นแล้ว"
               value={principalCut}
-              color="text-emerald-500"
+              color="text-emerald-700 dark:text-emerald-400"
             />
           </>
         )}
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+      <div className="mt-3 flex flex-wrap gap-2">
         <button
+          type="button"
           onClick={() => setShowHistory((v) => !v)}
-          className="text-gray-500 underline hover:text-primary dark:text-gray-400"
+          className="rounded-xl px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-primary dark:text-gray-400 dark:hover:bg-gray-800"
         >
-          ประวัติจ่าย ({payments.length})
+          ประวัติการจ่าย ({payments.length})
         </button>
         {isInstallment && (
           <button
+            type="button"
             onClick={() => setShowSchedule((v) => !v)}
-            className="text-gray-500 underline hover:text-primary dark:text-gray-400"
+            className="rounded-xl px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-primary dark:text-gray-400 dark:hover:bg-gray-800"
           >
             ตารางผ่อน
           </button>
         )}
         {loan.status === 'ACTIVE' && onConvert && (
           <button
+            type="button"
             onClick={onConvert}
-            className="text-gray-500 underline hover:text-primary dark:text-gray-400"
+            className="rounded-xl px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-primary dark:text-gray-400 dark:hover:bg-gray-800"
           >
             แปลงเป็นยอดตาย
           </button>
         )}
-        <button
-          onClick={() => setShowManage((v) => !v)}
-          className="text-gray-500 underline hover:text-primary dark:text-gray-400"
-        >
-          จัดการ
-        </button>
       </div>
 
       {showManage && (
@@ -724,9 +800,13 @@ function Stat({
   color?: string;
 }) {
   return (
-    <div className="rounded-lg bg-gray-50 p-2 dark:bg-gray-800/60">
-      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-      <p className={`font-bold ${color ?? 'text-gray-900 dark:text-white'}`}>
+    <div className="bg-white p-3 text-left sm:p-4 dark:bg-gray-900">
+      <p className="text-[12px] font-medium text-slate-500 dark:text-gray-400">
+        {label}
+      </p>
+      <p
+        className={`mt-1 text-lg font-bold tabular-nums sm:text-xl ${color ?? 'text-slate-900 dark:text-white'}`}
+      >
         ฿{baht(value)}
       </p>
     </div>
@@ -743,9 +823,13 @@ function StatText({
   color?: string;
 }) {
   return (
-    <div className="rounded-lg bg-gray-50 p-2 dark:bg-gray-800/60">
-      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-      <p className={`font-bold ${color ?? 'text-gray-900 dark:text-white'}`}>
+    <div className="bg-white p-3 text-left sm:p-4 dark:bg-gray-900">
+      <p className="text-[12px] font-medium text-slate-500 dark:text-gray-400">
+        {label}
+      </p>
+      <p
+        className={`mt-1 text-lg font-bold tabular-nums sm:text-xl ${color ?? 'text-slate-900 dark:text-white'}`}
+      >
         {value}
       </p>
     </div>
@@ -863,7 +947,7 @@ function ModalShell({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-md space-y-3 overflow-y-auto rounded-t-lg border border-gray-200 bg-white p-5 sm:rounded-lg dark:border-gray-800 dark:bg-gray-900"
+        className="max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-5 sm:rounded-2xl dark:border-gray-800 dark:bg-gray-900"
       >
         <h2 className="text-lg font-bold text-gray-900 dark:text-white">
           {title}
@@ -887,21 +971,27 @@ function EditDebtorModal({
   const [phone, setPhone] = useState(debtor.phone ?? '');
   const [facebookUrl, setFacebookUrl] = useState(debtor.facebookUrl ?? '');
   const [lineId, setLineId] = useState(debtor.lineId ?? '');
-  const [relativeName, setRelativeName] = useState(debtor.relativeName ?? '');
-  const [relativePhone, setRelativePhone] = useState(
-    debtor.relativePhone ?? '',
-  );
   const [note, setNote] = useState(debtor.note ?? '');
   const [blacklisted, setBlacklisted] = useState(debtor.blacklisted);
   const [creditNote, setCreditNote] = useState(debtor.creditNote ?? '');
-  const [guarantorName, setGuarantorName] = useState(
-    debtor.guarantorName ?? '',
-  );
-  const [guarantorPhone, setGuarantorPhone] = useState(
-    debtor.guarantorPhone ?? '',
-  );
+  const [contacts, setContacts] = useState<EmergencyContact[]>(() => {
+    const existing = resolveContacts(debtor);
+    return existing.length
+      ? existing
+      : [{ name: '', phone: '', line: '', note: '' }];
+  });
   const [error, setError] = useState('');
   const update = useUpdateDebtor(debtor.id);
+
+  const setContact = (
+    index: number,
+    key: keyof EmergencyContact,
+    value: string,
+  ) => {
+    setContacts((prev) =>
+      prev.map((c, i) => (i === index ? { ...c, [key]: value } : c)),
+    );
+  };
 
   const save = async () => {
     if (!name.trim()) {
@@ -914,13 +1004,10 @@ function EditDebtorModal({
         phone,
         facebookUrl,
         lineId,
-        relativeName,
-        relativePhone,
         note,
         blacklisted,
         creditNote,
-        guarantorName,
-        guarantorPhone,
+        emergencyContacts: contacts,
       });
       onSaved();
     } catch (e) {
@@ -952,18 +1039,73 @@ function EditDebtorModal({
         onChange={(e) => setLineId(e.target.value)}
         placeholder="เช่น mylineid หรือ https://line.me/ti/p/…"
       />
-      <div className="grid grid-cols-2 gap-2">
-        <FormInput
-          label="ญาติ / ผู้ติดต่อสำรอง"
-          value={relativeName}
-          onChange={(e) => setRelativeName(e.target.value)}
-        />
-        <FormInput
-          label="เบอร์ญาติ"
-          value={relativePhone}
-          onChange={(e) => setRelativePhone(e.target.value)}
-        />
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+            ผู้ติดต่อคนสนิท
+          </h3>
+          <button
+            type="button"
+            onClick={() =>
+              setContacts((c) => [
+                ...c,
+                { name: '', phone: '', line: '', note: '' },
+              ])
+            }
+            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200"
+          >
+            <IconPlus className="size-3.5" />
+            เพิ่มผู้ติดต่อ
+          </button>
+        </div>
+        {contacts.map((c, i) => (
+          <div
+            key={i}
+            className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-gray-700"
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-slate-700 dark:text-gray-200">
+                ผู้ติดต่อ {i + 1}
+              </p>
+              {contacts.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setContacts((list) => list.filter((_, j) => j !== i))
+                  }
+                  className="text-xs font-medium text-red-600"
+                >
+                  ลบ
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <FormInput
+                label="ชื่อ"
+                value={c.name}
+                onChange={(e) => setContact(i, 'name', e.target.value)}
+              />
+              <FormInput
+                label="เบอร์โทร"
+                value={c.phone ?? ''}
+                onChange={(e) => setContact(i, 'phone', e.target.value)}
+              />
+              <FormInput
+                label="LINE"
+                value={c.line ?? ''}
+                onChange={(e) => setContact(i, 'line', e.target.value)}
+              />
+              <FormInput
+                label="หมายเหตุ"
+                value={c.note ?? ''}
+                onChange={(e) => setContact(i, 'note', e.target.value)}
+              />
+            </div>
+          </div>
+        ))}
       </div>
+
       <label className="flex items-center gap-2 rounded-lg bg-red-50 p-2.5 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
         <input
           type="checkbox"
@@ -978,20 +1120,8 @@ function EditDebtorModal({
         onChange={(e) => setCreditNote(e.target.value)}
         placeholder="เช่น จ่ายตรงเวลา, ชอบเลื่อน"
       />
-      <div className="grid grid-cols-2 gap-2">
-        <FormInput
-          label="ผู้ค้ำประกัน"
-          value={guarantorName}
-          onChange={(e) => setGuarantorName(e.target.value)}
-        />
-        <FormInput
-          label="เบอร์ผู้ค้ำ"
-          value={guarantorPhone}
-          onChange={(e) => setGuarantorPhone(e.target.value)}
-        />
-      </div>
       <FormInput
-        label="หมายเหตุ"
+        label="หมายเหตุลูกหนี้"
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />
@@ -1226,25 +1356,123 @@ const attachKindLabel: Record<AttachmentKind, string> = {
   OTHER: 'อื่นๆ',
 };
 
+function facebookDisplayName(url: string, fallback: string): string {
+  try {
+    const path = new URL(url).pathname.replace(/\/+$/, '');
+    const last = path.split('/').filter(Boolean).pop();
+    if (last && last !== 'profile.php') return decodeURIComponent(last);
+  } catch {
+    /* ignore */
+  }
+  return fallback;
+}
+
 function AttachmentsSection({ debtorId }: { debtorId: string }) {
-  const [kind, setKind] = useState<AttachmentKind>('SLIP');
-  const [error, setError] = useState('');
   const { data: items } = useAttachments(debtorId);
   const { data: storage } = useStorageStatus();
   const upload = useUploadAttachment(debtorId);
   const removeAttachment = useDeleteAttachment(debtorId);
   const configured = storage?.configured ?? null;
-  const uploading = upload.isPending;
 
-  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const general = (items ?? []).filter(
+    (a) => a.kind === 'OTHER' || a.kind === 'SLIP',
+  );
+  const identity = (items ?? []).filter((a) => a.kind === 'ID_CARD');
+
+  return (
+    <div className="space-y-4">
+      {configured === false && (
+        <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+          ยังไม่ได้ตั้งค่า Supabase Storage — ตั้ง SUPABASE_URL/SUPABASE_SERVICE_KEY
+          ใน api/.env ก่อนจึงอัปโหลดได้
+        </p>
+      )}
+      <AttachmentGallery
+        title="รูปทั่วไป"
+        countLabel="รูป"
+        emptyHint="รูปลูกค้า สลิป หรือหลักฐานอื่น — เพิ่มได้ไม่จำกัด"
+        items={general}
+        uploadKind="OTHER"
+        uploading={upload.isPending}
+        disabled={configured === false}
+        onUpload={async (files) => {
+          for (const file of files) {
+            const form = new FormData();
+            form.append('file', file);
+            form.append('kind', 'OTHER');
+            await upload.mutateAsync(form);
+          }
+        }}
+        onRemove={async (id) => {
+          const ok = await confirmDialog({
+            title: 'ลบรูปนี้?',
+            confirmLabel: 'ลบรูป',
+            danger: true,
+          });
+          if (!ok) return;
+          await removeAttachment.mutateAsync(id);
+        }}
+      />
+      <AttachmentGallery
+        title="เอกสารยืนยันตัวตน"
+        countLabel="เอกสาร"
+        emptyHint="บัตรประชาชน / ทะเบียนบ้าน — แยกจากรูปทั่วไป"
+        items={identity}
+        uploadKind="ID_CARD"
+        uploading={upload.isPending}
+        disabled={configured === false}
+        onUpload={async (files) => {
+          for (const file of files) {
+            const form = new FormData();
+            form.append('file', file);
+            form.append('kind', 'ID_CARD');
+            await upload.mutateAsync(form);
+          }
+        }}
+        onRemove={async (id) => {
+          const ok = await confirmDialog({
+            title: 'ลบเอกสารนี้?',
+            confirmLabel: 'ลบเอกสาร',
+            danger: true,
+          });
+          if (!ok) return;
+          await removeAttachment.mutateAsync(id);
+        }}
+      />
+    </div>
+  );
+}
+
+function AttachmentGallery({
+  title,
+  countLabel,
+  emptyHint,
+  items,
+  uploadKind,
+  uploading,
+  disabled,
+  onUpload,
+  onRemove,
+}: {
+  title: string;
+  countLabel: string;
+  emptyHint: string;
+  items: Attachment[];
+  uploadKind: AttachmentKind;
+  uploading: boolean;
+  disabled: boolean;
+  onUpload: (files: File[]) => Promise<void>;
+  onRemove: (id: string) => Promise<void>;
+}) {
+  const [error, setError] = useState('');
+  const inputId = `attach-${uploadKind}`;
+
+  const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (!list?.length) return;
     setError('');
     try {
-      const form = new FormData();
-      form.append('file', file);
-      form.append('kind', kind);
-      await upload.mutateAsync(form);
+      await onUpload(Array.from(list));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'อัปโหลดไม่สำเร็จ');
     } finally {
@@ -1252,82 +1480,92 @@ function AttachmentsSection({ debtorId }: { debtorId: string }) {
     }
   };
 
-  const remove = async (id: string) => {
-    const ok = await confirmDialog({
-      title: 'ลบไฟล์นี้?',
-      confirmLabel: 'ลบไฟล์',
-      danger: true,
-    });
-    if (!ok) return;
-    await removeAttachment.mutateAsync(id);
-  };
-
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-          ไฟล์แนบ (สลิป / บัตร)
-        </h2>
-        <div className="flex items-center gap-2">
-          <SelectMenu
-            size="sm"
-            value={kind}
-            onChange={setKind}
-            options={[
-              { value: 'SLIP', label: 'สลิปโอน' },
-              { value: 'ID_CARD', label: 'บัตรประชาชน' },
-              { value: 'OTHER', label: 'อื่นๆ' },
-            ]}
-          />
-          <label className="cursor-pointer rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90">
-            {uploading ? 'กำลังอัป…' : 'อัปโหลด'}
-            <input
-              type="file"
-              accept="image/*"
-              onChange={onFile}
-              disabled={uploading}
-              className="hidden"
-            />
-          </label>
+    <section
+      aria-labelledby={`${inputId}-heading`}
+      className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-gray-900"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2
+            id={`${inputId}-heading`}
+            className="text-base font-semibold text-slate-900 dark:text-white"
+          >
+            {title}
+          </h2>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-gray-400">
+            {items.length} {countLabel}
+          </p>
         </div>
+        <label
+          htmlFor={inputId}
+          className={`inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90 ${
+            uploading || disabled ? 'pointer-events-none opacity-60' : ''
+          }`}
+        >
+          <IconPlus className="size-4" />
+          {uploading ? 'กำลังอัป…' : `เพิ่ม${countLabel}`}
+        </label>
+        <input
+          id={inputId}
+          type="file"
+          accept="image/*"
+          multiple
+          disabled={uploading || disabled}
+          onChange={(e) => void handleFiles(e)}
+          className="sr-only"
+        />
       </div>
 
-      {configured === false && (
-        <p className="mt-2 rounded-lg bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
-          ยังไม่ได้ตั้งค่า Supabase Storage — ตั้ง SUPABASE_URL/SUPABASE_SERVICE_KEY
-          ใน api/.env ก่อนจึงอัปโหลดได้
+      {error && (
+        <p className="mt-2 text-sm font-medium text-red-600 dark:text-red-400">
+          {error}
         </p>
       )}
-      {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
 
-      {items && items.length > 0 && (
-        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
-          {items.map((a) => (
-            <div key={a.id} className="group relative">
-              <a href={a.url} target="_blank" rel="noreferrer">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={a.url}
-                  alt={a.filename}
-                  className="aspect-square w-full rounded-lg border border-gray-200 object-cover dark:border-gray-800"
-                />
-              </a>
-              <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[10px] text-white">
+      <div
+        className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4"
+        aria-live="polite"
+      >
+        {items.map((a) => (
+          <div key={a.id} className="group relative">
+            <a href={a.url} target="_blank" rel="noreferrer" className="block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={a.url}
+                alt={a.filename}
+                className="aspect-square w-full rounded-xl border border-slate-200 object-cover dark:border-gray-800"
+              />
+            </a>
+            {(a.kind === 'SLIP' || a.kind === 'ID_CARD') && (
+              <span className="absolute bottom-1.5 left-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
                 {attachKindLabel[a.kind]}
               </span>
-              <button
-                onClick={() => remove(a.id)}
-                className="absolute top-1 right-1 rounded bg-black/60 px-1 text-[10px] text-white opacity-0 group-hover:opacity-100"
-              >
-                ลบ
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      {items && items.length === 0 && configured !== false && (
-        <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-          ยังไม่มีไฟล์แนบ
+            )}
+            <button
+              type="button"
+              onClick={() => void onRemove(a.id)}
+              className="absolute top-1.5 right-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+            >
+              ลบ
+            </button>
+          </div>
+        ))}
+
+        <label
+          htmlFor={inputId}
+          className={`flex aspect-square cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm font-semibold text-slate-500 transition-colors hover:border-primary hover:bg-primary/5 hover:text-primary dark:border-gray-700 dark:bg-gray-950/40 dark:text-gray-400 ${
+            uploading || disabled ? 'pointer-events-none opacity-50' : ''
+          }`}
+        >
+          <IconPlus className="size-5" />
+          เพิ่ม{countLabel}
+        </label>
+      </div>
+
+      {items.length === 0 && !disabled && (
+        <p className="mt-3 text-sm text-slate-400 dark:text-gray-500">
+          {emptyHint}
         </p>
       )}
     </section>

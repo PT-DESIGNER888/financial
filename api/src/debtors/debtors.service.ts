@@ -39,7 +39,15 @@ export class DebtorsService {
     facebookUrl?: string;
     lineId?: string;
     note?: string;
+    emergencyContacts?: Array<{
+      name: string;
+      phone?: string;
+      line?: string;
+      note?: string;
+    }>;
   }) {
+    const contacts = sanitizeContacts(input.emergencyContacts);
+    const legacy = syncLegacyContacts(contacts);
     return this.debtors.save(
       this.debtors.create({
         name: input.name,
@@ -47,6 +55,8 @@ export class DebtorsService {
         facebookUrl: input.facebookUrl ?? null,
         lineId: input.lineId ?? null,
         note: input.note ?? null,
+        emergencyContacts: contacts,
+        ...legacy,
       }),
     );
   }
@@ -65,10 +75,22 @@ export class DebtorsService {
       creditNote?: string;
       guarantorName?: string;
       guarantorPhone?: string;
+      emergencyContacts?: Array<{
+        name: string;
+        phone?: string;
+        line?: string;
+        note?: string;
+      }>;
     },
   ) {
     const before = await this.findOne(id);
-    await this.debtors.update(id, input);
+    const patch: Record<string, unknown> = { ...input };
+    if (input.emergencyContacts !== undefined) {
+      const contacts = sanitizeContacts(input.emergencyContacts);
+      patch.emergencyContacts = contacts;
+      Object.assign(patch, syncLegacyContacts(contacts));
+    }
+    await this.debtors.update(id, patch);
     await this.activity.log({
       type: 'EDIT_DEBTOR',
       debtorId: id,
@@ -90,4 +112,36 @@ export class DebtorsService {
       message: `ลบลูกหนี้ "${debtor.name}" (${loanCount} ยอดกู้)`,
     });
   }
+}
+
+type Contact = {
+  name: string;
+  phone?: string;
+  line?: string;
+  note?: string;
+};
+
+function sanitizeContacts(list?: Contact[]): Contact[] | null {
+  if (!list?.length) return null;
+  const cleaned = list
+    .map((c) => ({
+      name: (c.name ?? '').trim(),
+      phone: (c.phone ?? '').trim() || undefined,
+      line: (c.line ?? '').trim() || undefined,
+      note: (c.note ?? '').trim() || undefined,
+    }))
+    .filter((c) => c.name || c.phone || c.line || c.note);
+  return cleaned.length ? cleaned : null;
+}
+
+/** คง relative/guarantor ให้ระบบเก่าที่อ่านคอลัมน์เดิมยังใช้ได้ */
+function syncLegacyContacts(contacts: Contact[] | null) {
+  const a = contacts?.[0];
+  const b = contacts?.[1];
+  return {
+    relativeName: a?.name || null,
+    relativePhone: a?.phone || null,
+    guarantorName: b?.name || null,
+    guarantorPhone: b?.phone || null,
+  };
 }

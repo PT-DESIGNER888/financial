@@ -8,8 +8,23 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { DebtorsService } from './debtors.service';
+
+class EmergencyContactDto {
+  @IsString() @IsNotEmpty() name: string;
+  @IsOptional() @IsString() phone?: string;
+  @IsOptional() @IsString() line?: string;
+  @IsOptional() @IsString() note?: string;
+}
 
 class CreateDebtorDto {
   @IsString() @IsNotEmpty() name: string;
@@ -17,6 +32,11 @@ class CreateDebtorDto {
   @IsOptional() @IsString() facebookUrl?: string;
   @IsOptional() @IsString() lineId?: string;
   @IsOptional() @IsString() note?: string;
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => EmergencyContactDto)
+  emergencyContacts?: EmergencyContactDto[];
 }
 
 class UpdateDebtorDto {
@@ -31,6 +51,11 @@ class UpdateDebtorDto {
   @IsOptional() @IsString() creditNote?: string;
   @IsOptional() @IsString() guarantorName?: string;
   @IsOptional() @IsString() guarantorPhone?: string;
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => EmergencyContactDto)
+  emergencyContacts?: EmergencyContactDto[];
 }
 
 @Controller('debtors')

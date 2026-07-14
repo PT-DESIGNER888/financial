@@ -38,9 +38,9 @@ export function BackButton({
     <button
       type="button"
       onClick={goBack}
-      className="-ml-1.5 inline-flex min-h-9 items-center gap-0.5 rounded-xl px-1.5 py-1 text-[13px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+      className="-ml-1.5 inline-flex min-h-11 items-center gap-1 rounded-xl px-2 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
     >
-      <IconChevronLeft className="size-5 shrink-0" />
+      <IconChevronLeft className="size-6 shrink-0" />
       <span>{label}</span>
     </button>
   );

@@ -45,12 +45,12 @@ export class DashboardService {
           loan.deadBalance ?? 0,
         );
       } else if (loan.status === 'INSTALLMENT') {
-        // ผ่อนสินค้า: ยอดที่ถึงกำหนดถึงวันนี้ (รวมงวดค้างเก่า)
+        // ผ่อนงวด: ยอดที่ถึงกำหนดถึงวันนี้ (รวมงวดค้างเก่า)
         const sch = this.loansService.buildInstallmentSchedule(loan, today);
         dueInstallment = sch?.dueNow ?? 0;
         isDueToday = dueInstallment > 0;
       }
-      // ยอดตาย/ผ่อนสินค้า: ต้น/ค้างเดิมถูกตรึงเข้า deadBalance แล้ว ไม่นับซ้ำ
+      // ยอดตาย/ผ่อนงวด: ต้น/ค้างเดิมถูกตรึงเข้า deadBalance แล้ว ไม่นับซ้ำ
       const arrears = frozen ? 0 : loan.arrears;
       const paidToday = paidByLoan.get(loan.id) ?? 0;
       const dueTotal = dueInterest + dueInstallment + arrears;
@@ -95,7 +95,7 @@ export class DashboardService {
       (s, p) => s + p.interestPaid + p.arrearsPaid,
       0,
     );
-    // ยอดที่ตัดหนี้สูญ = ผลขาดทุน (ยอดตาย/ผ่อนสินค้าดู deadBalance, ยอดปกติดู ต้น+ค้าง)
+    // ยอดที่ตัดหนี้สูญ = ผลขาดทุน (ยอดตาย/ผ่อนงวดดู deadBalance, ยอดปกติดู ต้น+ค้าง)
     const badDebt = badDebtLoans.reduce(
       (s, l) =>
         s +

@@ -1,11 +1,14 @@
 /**
- * ใส่ข้อมูลตัวอย่างสัมพันธ์กัน ~5 ลูกหนี้ + ยอดกู้/การจ่าย
- * ให้ขึ้นหน้า "เก็บวันนี้" ได้จริง
+ * ข้อมูลตัวอย่างที่ตัวเลขสัมพันธ์กัน (คำนวณตรวจได้)
+ * ให้หน้า "เก็บวันนี้" และหน้ารายละเอียดลูกหนี้ดูสมเหตุสมผล
  *
  * ใช้: node scripts/seed-demo.mjs
+ * ใส่ FORCE=1 เพื่อลบ DEMO เก่าแล้วสร้างใหม่
  * ต้องรัน API ที่ localhost:3001 แล้ว
  */
 const BASE = process.env.API_URL ?? 'http://localhost:3001';
+const SEED_TAG = 'DEMO_SEED_v2';
+const FORCE = process.env.FORCE === '1' || process.argv.includes('--force');
 
 function bangkokToday() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -21,6 +24,10 @@ function addDays(iso, n) {
   const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() + n);
   return dt.toISOString().slice(0, 10);
+}
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
 }
 
 async function api(token, path, { method = 'GET', body } = {}) {
@@ -45,7 +52,7 @@ async function api(token, path, { method = 'GET', body } = {}) {
 
 async function main() {
   const today = bangkokToday();
-  console.log(`API ${BASE} · วันนี้ (Bangkok) = ${today}`);
+  console.log(`API ${BASE} · วันนี้ (Bangkok) = ${today} · tag ${SEED_TAG}`);
 
   const login = await api(null, '/auth/login', {
     method: 'POST',
@@ -54,66 +61,131 @@ async function main() {
   const token = login.accessToken;
 
   const existing = await api(token, '/debtors');
-  const already = existing.some((d) => d.note === 'DEMO_SEED_v1');
-  if (already) {
-    console.log('มีข้อมูล DEMO_SEED_v1 อยู่แล้ว — ข้ามการสร้างซ้ำ');
+  const demoDebtors = existing.filter(
+    (d) =>
+      typeof d.note === 'string' &&
+      (d.note.startsWith('DEMO_SEED') || d.note.includes('DEMO_SEED')),
+  );
+
+  if (demoDebtors.length && !FORCE) {
+    console.log(
+      `มีข้อมูล DEMO อยู่แล้ว ${demoDebtors.length} คน — ข้าม (ใส่ FORCE=1 หรือ --force เพื่อสร้างใหม่)`,
+    );
     const todayDash = await api(token, '/dashboard/today');
     console.log(`เก็บวันนี้: ${todayDash.items.length} รายการ`);
     return;
   }
 
-  // —— 5 ลูกหนี้ ที่เกี่ยวกับกันในพอร์ตเดียวกัน ——
+  for (const d of demoDebtors) {
+    await api(token, `/debtors/${d.id}`, { method: 'DELETE' });
+    console.log(`− ลบ DEMO เก่า: ${d.name}`);
+  }
+
+  /**
+   * พอร์ตตัวอย่าง (ตัวเลขตรวจคร่าวๆ ได้):
+   *
+   * สมชาย  ต้น 10,000 · ดอก 1%/วัน = 100 → จ่ายวันนี้ 1,100 (ดอก 100 + ตัดต้น 1,000) → ต้นเหลือ 9,000
+   * มาลี   ต้น 30,000 · ดอกคงที่ 3%/10วัน = 900 · ครบรอบวันนี้
+   * วิชัย  ต้นเดิม 20,000 ตัดเหลือ 18,000 · ดอกค้าง 2 วัน × 270 = 540 · วันนี้ดอกเพิ่ม 270 → รวมเก็บ 810
+   * นภา    ผ่อนมือถือ ต้น 5,000 / รวม 6,000 / 6 งวด × 1,000 · เปิดมา 4 วัน · จ่ายไป 2 งวด → เหลือผ่อน 4,000 · ต้นสัดส่วน 3,333.33
+   * ประยุทธ์ ต้น 50,000 · 2%/วัน = 1,000 (+ ยอด 10 วันอีกก้อนยังไม่ครบรอบ)
+   */
   const people = [
     {
       name: 'สมชาย จันทร์เพ็ญ',
       phone: '081-234-5678',
       lineId: 'somchai.j',
-      note: 'DEMO_SEED_v1',
+      facebookUrl: 'https://facebook.com/somchai.jan',
+      note: SEED_TAG,
+      creditNote: 'จ่ายตรงค่อนข้างดี — ตัวอย่างตัดต้นทอนยอด',
+      emergencyContacts: [
+        {
+          name: 'สมหญิง จันทร์เพ็ญ',
+          phone: '081-234-5699',
+          line: 'somying.j',
+          note: 'ภรรยา',
+        },
+        {
+          name: 'สมศักดิ์ จันทร์เพ็ญ',
+          phone: '089-000-1122',
+          line: 'somsak.j',
+          note: 'พี่ชาย',
+        },
+      ],
       loans: [
         {
-          // ดอกรายวัน — ยอดเก่า → due วันนี้
           principalOriginal: 10000,
           outstandingPrincipal: 10000,
           interestRatePercent: 1,
           cycle: 'DAILY',
           interestMode: 'FLOATING',
-          note: 'ยอดประจำวัน — ต้องเก็บดอกวันนี้',
+          note: 'กู้ 10,000 · ดอก 1%/วัน = 100',
         },
       ],
-      pay: { index: 0, amount: 50 }, // จ่ายบางส่วนวันนี้
+      // ดอกวันนี้ 100 + ตัดต้น 1,000 = 1,100 → ต้นเหลือ 9,000
+      pays: [
+        {
+          index: 0,
+          amount: 1100,
+          arrearsPaid: 0,
+          interestPaid: 100,
+          principalPaid: 1000,
+          note: 'ตัวอย่าง: ดอกครบ + ตัดต้น 1,000',
+        },
+      ],
     },
     {
       name: 'มาลี ศรีสุข',
       phone: '089-111-2233',
       facebookUrl: 'https://facebook.com/malee.srisuk',
-      note: 'DEMO_SEED_v1',
+      lineId: 'malee.ss',
+      note: SEED_TAG,
+      creditNote: 'ยอด 10 วัน ดอกคงที่',
+      emergencyContacts: [
+        {
+          name: 'สมบัติ ศรีสุข',
+          phone: '089-111-2244',
+          line: 'sombat.ss',
+          note: 'สามี',
+        },
+      ],
       loans: [
         {
-          // ราย 10 วันครบรอบวันนี้
           principalOriginal: 30000,
           outstandingPrincipal: 30000,
           interestRatePercent: 3,
           cycle: 'TEN_DAY',
           interestMode: 'FLAT',
           startDate: addDays(today, -10),
-          note: 'ยอด 10 วัน — ครบรอบวันนี้',
+          note: 'กู้ 30,000 · ดอกคงที่ 3%/10วัน = 900 · ครบรอบวันนี้',
         },
       ],
     },
     {
       name: 'วิชัย พูนผล',
       phone: '062-555-7788',
-      note: 'DEMO_SEED_v1',
+      lineId: 'wichai.p',
+      note: SEED_TAG,
+      creditNote: 'เคยเลื่อนจ่าย — มีดอกค้าง 2 รอบ',
+      emergencyContacts: [
+        {
+          name: 'วิไล พูนผล',
+          phone: '062-555-7799',
+          line: 'wilai.p',
+          note: 'น้องสาว',
+        },
+      ],
       loans: [
         {
-          // มียอดค้างดอกเก่า
+          // ต้นเดิม 20,000 ตัดไปแล้ว 2,000 → เหลือ 18,000
+          // ดอก 1.5% ของ 18,000 = 270/วัน × ค้าง 2 วัน = 540
           principalOriginal: 20000,
           outstandingPrincipal: 18000,
-          arrears: 450,
+          arrears: 540,
           interestRatePercent: 1.5,
           cycle: 'DAILY',
           interestMode: 'FLOATING',
-          note: 'ตัดต้นไปแล้วบางส่วน + ดอกค้าง',
+          note: 'ต้นเหลือ 18,000 (ตัดไป 2,000) · ค้างดอก 2×270 = 540',
         },
       ],
     },
@@ -121,24 +193,57 @@ async function main() {
       name: 'นภา อรุณรุ่ง',
       phone: '086-999-0001',
       lineId: 'napha.arun',
-      note: 'DEMO_SEED_v1',
+      facebookUrl: 'https://facebook.com/napha.arun',
+      note: SEED_TAG,
+      creditNote: 'ผ่อนมือถือ — จ่ายงวดแรกสองงวดแล้ว',
+      emergencyContacts: [
+        {
+          name: 'นพดล อรุณรุ่ง',
+          phone: '086-999-0002',
+          line: 'nopadol.a',
+          note: 'พ่อ',
+        },
+      ],
       loans: [
         {
-          // ผ่อนสินค้า เปิดมา 3 วันแล้ว → มีงวดค้าง
           type: 'INSTALLMENT',
           principalOriginal: 5000,
           installmentTotal: 6000,
           installmentCount: 6,
           cycle: 'DAILY',
-          startDate: addDays(today, -3),
-          note: 'ผ่อนมือถือ 6 งวด',
+          startDate: addDays(today, -4),
+          note: 'ผ่อนมือถือ · ต้น 5,000 / รวม 6,000 / 6 งวด × 1,000',
+        },
+      ],
+      // จ่าย 2 งวด = 2,000 → เหลือผ่อน 4,000 · ต้นสัดส่วน = 5,000 × 4,000/6,000 ≈ 3,333.33
+      pays: [
+        {
+          index: 0,
+          amount: 2000,
+          paidDate: addDays(today, -2),
+          note: 'ตัวอย่าง: จ่ายไป 2 งวด',
         },
       ],
     },
     {
       name: 'ประยุทธ์ เงินดี',
       phone: '083-444-5566',
-      note: 'DEMO_SEED_v1',
+      lineId: 'prayut.ngd',
+      note: SEED_TAG,
+      creditNote: 'ลูกค้ายอดใหญ่ — มี 2 สัญญา',
+      emergencyContacts: [
+        {
+          name: 'ปรียา เงินดี',
+          phone: '083-444-5577',
+          line: 'priya.ngd',
+          note: 'ภรรยา',
+        },
+        {
+          name: 'ประเสริฐ เงินดี',
+          phone: '083-444-5588',
+          note: 'ลูกชาย',
+        },
+      ],
       loans: [
         {
           principalOriginal: 50000,
@@ -146,24 +251,23 @@ async function main() {
           interestRatePercent: 2,
           cycle: 'DAILY',
           interestMode: 'FLOATING',
-          note: 'ยอดใหญ่รายวัน',
+          note: 'กู้ 50,000 · ดอก 2%/วัน = 1,000',
         },
         {
-          // คนเดียวกัน — อีกยอดราย 10 วัน ยังไม่ครบรอบ (ไม่ขึ้นวันนี้)
           principalOriginal: 15000,
           outstandingPrincipal: 15000,
           interestRatePercent: 5,
           cycle: 'TEN_DAY',
           interestMode: 'FLAT',
           startDate: addDays(today, -3),
-          note: 'ยอด 10 วัน — ยังไม่ครบรอบ (อีก 7 วัน)',
+          note: 'กู้ 15,000 · ดอกคงที่ 5%/10วัน = 750 · ยังไม่ครบรอบ (อีก 7 วัน)',
         },
       ],
     },
   ];
 
   for (const person of people) {
-    const { loans, pay, ...debtorBody } = person;
+    const { loans, pays, ...debtorBody } = person;
     const debtor = await api(token, '/debtors', {
       method: 'POST',
       body: debtorBody,
@@ -177,34 +281,59 @@ async function main() {
         body: { debtorId: debtor.id, ...loanBody },
       });
       createdLoans.push(loan);
+      const hint =
+        loan.status === 'INSTALLMENT'
+          ? `ผ่อน ${loan.installmentAmount}/งวด · คงเหลือ ${loan.deadBalance}`
+          : `ต้น ${loan.outstandingPrincipal} · ค้าง ${loan.arrears} · ดอก ${loan.interestRatePercent}%`;
       console.log(
-        `  └ ยอด ${loan.contractNumber ?? loan.id.slice(0, 8)} · ${loan.status} · ต้น ${loan.principalOriginal}`,
+        `  └ ${loan.contractNumber} · ${loan.status} · ${hint}`,
       );
     }
 
-    if (pay) {
+    for (const pay of pays ?? []) {
       const loan = createdLoans[pay.index];
+      const { index: _i, ...body } = pay;
       const payment = await api(token, '/payments', {
         method: 'POST',
-        body: {
-          loanId: loan.id,
-          amount: pay.amount,
-          note: 'ตัวอย่างจ่ายบางส่วนวันนี้',
-        },
+        body: { loanId: loan.id, ...body },
       });
-      console.log(`  └ จ่ายแล้ววันนี้ ฿${payment.amount}`);
+      console.log(`  └ จ่าย ฿${payment.amount} (${payment.note ?? ''})`);
+    }
+
+    // รีเฟรชยอดหลังจ่าย เพื่อตรวจตัวเลข
+    for (let i = 0; i < createdLoans.length; i++) {
+      const loan = await api(token, `/loans/${createdLoans[i].id}`);
+      if (loan.status === 'INSTALLMENT') {
+        console.log(
+          `  └ หลังจ่าย → ต้น ${loan.outstandingPrincipal} · ผ่อนคงเหลือ ${loan.deadBalance}`,
+        );
+      } else if ((pays ?? []).some((p) => p.index === i)) {
+        console.log(
+          `  └ หลังจ่าย → ต้น ${loan.outstandingPrincipal} · ค้าง ${loan.arrears}`,
+        );
+      }
     }
   }
 
   const dash = await api(token, '/dashboard/today');
   console.log('');
   console.log('—— เก็บวันนี้ ——');
-  console.log(`วันที่ ${dash.date} · ${dash.items.length} รายการ · ยอดเปิดทั้งหมด ${dash.allOpen}`);
+  console.log(
+    `วันที่ ${dash.date} · ${dash.items.length} รายการ · ยอดเปิดทั้งหมด ${dash.allOpen}`,
+  );
   for (const i of dash.items) {
     console.log(
-      ` · ${i.debtorName} | เหลือวันนี้ ${i.remainingToday} | ค้าง ${i.arrears} | จ่ายแล้ว ${i.paidToday} | ${i.status}`,
+      ` · ${i.debtorName} | เก็บวันนี้ ${i.remainingToday} | ค้าง ${i.arrears} | จ่ายแล้ว ${i.paidToday} | ${i.status}`,
     );
   }
+
+  console.log('');
+  console.log('—— สรุปตัวเลขที่ควรเห็น ——');
+  console.log(' สมชาย: ต้นเหลือ 9,000 (หลังตัด 1,000) · จ่ายดอกครบวันนี้');
+  console.log(' มาลี: ดอกคงที่ครบรอบ 900');
+  console.log(' วิชัย: ค้าง 540 + ดอกวันนี้ 270 = เก็บ 810 · ต้น 18,000');
+  console.log(' นภา: ผ่อนเหลือ 4,000 (จ่ายไป 2/6) · ต้นสัมพันธ์ ≈ 3,333.33');
+  console.log(' ประยุทธ์: ดอกวันนี้ 1,000 (+ สัญญา 10 วันยังไม่ครบรอบ)');
 }
 
 main().catch((e) => {

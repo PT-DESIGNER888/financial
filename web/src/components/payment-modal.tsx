@@ -13,7 +13,7 @@ import { toast } from '@/lib/toast-store';
 interface Props {
   loanId: string;
   debtorName: string;
-  /** ยอดตาย/ผ่อนสินค้า: รับเป็นเงินผ่อนก้อนเดียว หักจากยอดคงเหลือ */
+  /** ยอดตาย/ผ่อนงวด: รับเป็นเงินผ่อนก้อนเดียว หักจากยอดคงเหลือ */
   frozen: boolean;
   /** ปุ่มยอดด่วน เช่น ยอดที่ต้องเก็บวันนี้ */
   quickAmounts?: { label: string; amount: number }[];
@@ -203,7 +203,7 @@ export function PaymentModal({
           <h2 className="text-xl font-bold tracking-tight text-slate-900 md:text-2xl dark:text-white">
             รับเงิน
           </h2>
-          <p className="mt-1 text-sm text-slate-500 md:text-[15px] dark:text-gray-400">
+          <p className="mt-1 text-sm text-slate-500 dark:text-gray-400">
             {debtorName}
             {maxReceivable > 0 && (
               <> · ยอดค้างทั้งหมด ฿{baht(maxReceivable)}</>
@@ -244,7 +244,7 @@ export function PaymentModal({
             <button
               type="button"
               onClick={() => applyAmount(maxReceivable)}
-              className={`min-h-11 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors md:text-[15px] ${
+              className={`min-h-12 rounded-xl border px-4 py-3 text-base font-semibold transition-colors ${
                 amountNum === maxReceivable
                   ? 'border-primary bg-primary/10 text-primary'
                   : 'border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800'
@@ -260,7 +260,7 @@ export function PaymentModal({
                 key={q.label}
                 type="button"
                 onClick={() => applyAmount(q.amount)}
-                className={`min-h-11 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors md:text-[15px] ${
+                className={`min-h-12 rounded-xl border px-4 py-3 text-base font-semibold transition-colors ${
                   amountNum === q.amount
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800'
@@ -273,7 +273,7 @@ export function PaymentModal({
             <button
               type="button"
               onClick={recalculate}
-              className="min-h-11 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 md:text-[15px] dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              className="min-h-12 rounded-xl border border-slate-200 px-4 py-3 text-base font-semibold text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
             >
               คำนวณใหม่
             </button>
@@ -295,7 +295,7 @@ export function PaymentModal({
             </div>
           )}
 
-          <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 text-sm md:text-[15px] dark:bg-gray-950/60">
+          <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 text-sm dark:bg-gray-950/60">
             <span className="text-slate-500 dark:text-gray-400">
               {frozen ? 'ยอดผ่อนคงเหลือ' : 'เงินต้นคงเหลือ'}
             </span>
@@ -321,7 +321,7 @@ export function PaymentModal({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="ไม่บังคับ"
-            className="h-12 text-sm md:text-[15px]"
+            className="h-12 text-base"
           />
         </div>
 

@@ -88,15 +88,15 @@ export class Loan {
   @Column({ ...money, nullable: true })
   deadBalance: number | null;
 
-  /** งวดผ่อน (ยอดตาย = ทุก 10 วัน, ผ่อนสินค้า = ต่องวดตามรอบ) */
+  /** งวดผ่อน (ยอดตาย = ทุก 10 วัน, ผ่อนงวด = ต่องวดตามรอบ) */
   @Column({ ...money, nullable: true })
   installmentAmount: number | null;
 
-  /** ผ่อนสินค้า: จำนวนงวดทั้งหมด (N) — null = ไม่ใช่ยอดผ่อนสินค้า */
+  /** ผ่อนงวด: จำนวนงวดทั้งหมด (N) — null = ไม่ใช่ยอดผ่อนงวด */
   @Column({ type: 'int', nullable: true })
   installmentCount: number | null;
 
-  /** ผ่อนสินค้า: ยอดเต็มที่ต้องผ่อนทั้งสัญญา (ต้น + ดอกรวม) */
+  /** ผ่อนงวด: ยอดเต็มที่ต้องผ่อนทั้งสัญญา (ต้น + ดอกรวม) */
   @Column({ ...money, nullable: true })
   installmentTotal: number | null;
 

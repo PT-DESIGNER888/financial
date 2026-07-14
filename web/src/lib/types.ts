@@ -44,8 +44,16 @@ export interface Debtor {
   creditNote: string | null;
   guarantorName: string | null;
   guarantorPhone: string | null;
+  emergencyContacts: EmergencyContact[] | null;
   loans?: Loan[];
   createdAt: string;
+}
+
+export interface EmergencyContact {
+  name: string;
+  phone?: string;
+  line?: string;
+  note?: string;
 }
 
 export type AttachmentKind = 'SLIP' | 'ID_CARD' | 'OTHER';

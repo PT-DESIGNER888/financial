@@ -11,7 +11,7 @@ import { Popover } from '@/components/popover';
 
 /** คลาสพื้นฐานของช่องกรอก — export ไว้เผื่อกรณีที่ต้องใส่เอง */
 export const inputCls =
-  'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-primary focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500';
+  'w-full min-h-12 rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 transition-colors focus:border-primary focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500 md:min-h-[3.25rem] md:text-[17px]';
 
 /** กล่อง label + ช่องกรอก + ข้อความ hint/error */
 export function Field({
@@ -28,18 +28,18 @@ export function Field({
   return (
     <div>
       {label && (
-        <label className="mb-1.5 block text-[13px] font-medium text-slate-600 dark:text-gray-300">
+        <label className="mb-1.5 block text-sm font-medium text-slate-600 md:text-[15px] dark:text-gray-300">
           {label}
         </label>
       )}
       {children}
       {hint && (
-        <p className="mt-1.5 text-[12px] leading-relaxed text-slate-500 dark:text-gray-500">
+        <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500 dark:text-gray-500">
           {hint}
         </p>
       )}
       {error && (
-        <p className="mt-1.5 text-[13px] font-medium text-red-600 dark:text-red-400">
+        <p className="mt-1.5 text-sm font-medium text-red-600 dark:text-red-400">
           {error}
         </p>
       )}
@@ -108,11 +108,11 @@ export function SelectMenu<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen(true)}
-        className={`${size === 'md' ? inputCls : 'rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-primary focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white'} flex cursor-pointer items-center justify-between gap-2 text-left ${className ?? ''}`}
+        className={`${size === 'md' ? inputCls : 'min-h-10 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white'} flex cursor-pointer items-center justify-between gap-2 text-left ${className ?? ''}`}
       >
         <span className="truncate">{current?.label ?? '—'}</span>
         <IconChevronDown
-          className={`size-4 shrink-0 text-gray-400 transition-transform dark:text-gray-500 ${open ? 'rotate-180' : ''}`}
+          className={`size-5 shrink-0 text-gray-400 transition-transform dark:text-gray-500 ${open ? 'rotate-180' : ''}`}
         />
       </button>
       {open && btnRef.current && (
@@ -133,7 +133,7 @@ export function SelectMenu<T extends string>({
                       onChange(o.value);
                       setOpen(false);
                     }}
-                    className={`flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left ${size === 'sm' ? 'text-xs' : 'text-sm'} ${
+                    className={`flex w-full items-center justify-between gap-2 px-3.5 py-3 text-left ${size === 'sm' ? 'text-sm' : 'text-base'} ${
                       selected
                         ? 'bg-primary/10 font-semibold text-primary'
                         : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700'
@@ -171,8 +171,8 @@ const buttonVariant: Record<ButtonVariant, string> = {
 };
 
 const buttonSize: Record<ButtonSize, string> = {
-  sm: 'min-h-9 px-3.5 py-2 text-[13px] md:min-h-10 md:text-sm',
-  md: 'min-h-11 px-4 py-2.5 text-[14px] md:min-h-12 md:px-5 md:text-[15px]',
+  sm: 'min-h-11 px-4 py-2.5 text-sm md:min-h-12 md:text-[15px]',
+  md: 'min-h-12 px-5 py-3 text-base md:min-h-[3.25rem] md:px-6 md:text-[17px]',
 };
 
 /** ปุ่มกลางของทั้งแอป — variant primary/secondary/danger, size sm/md */
@@ -252,7 +252,7 @@ export function Segmented<T extends string>({
             key={o.value}
             type="button"
             onClick={() => onChange(o.value)}
-            className={`flex-1 rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-colors ${
+            className={`flex-1 rounded-xl border px-3 py-3.5 text-center text-[15px] font-semibold transition-colors md:text-base ${
               active
                 ? activeCls
                 : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800'
@@ -261,7 +261,7 @@ export function Segmented<T extends string>({
             <span className="block leading-tight">{o.label}</span>
             {o.hint && (
               <span
-                className={`mt-0.5 block text-[11px] font-normal leading-tight ${
+                className={`mt-0.5 block text-xs font-normal leading-tight ${
                   active ? 'opacity-80' : 'text-gray-400 dark:text-gray-500'
                 }`}
               >

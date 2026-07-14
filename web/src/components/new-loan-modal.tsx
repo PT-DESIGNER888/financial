@@ -114,7 +114,7 @@ export function NewLoanModal({
     setValue('cycle', t === 'INSTALLMENT' ? 'TEN_DAY' : 'DAILY');
   };
 
-  // พรีวิวยอดผ่อนสินค้า
+  // พรีวิวยอดผ่อนงวด
   const principalNum = parseFloat(watch('principalOriginal') || '') || 0;
   const interestNum = parseFloat(watch('totalInterest') || '') || 0;
   const countNum = parseInt(watch('installmentCount') || '', 10) || 0;
@@ -164,7 +164,7 @@ export function NewLoanModal({
       await createLoan.mutateAsync(input);
       toast(
         data.loanType === 'INSTALLMENT'
-          ? 'เปิดยอดผ่อนสินค้าแล้ว'
+          ? 'เปิดยอดผ่อนงวดแล้ว'
           : 'เปิดยอดใหม่แล้ว',
       );
       onSaved();
@@ -216,7 +216,7 @@ export function NewLoanModal({
             accent={isInstallment ? 'sky' : 'primary'}
             options={[
               { value: 'REVOLVING', label: 'ดอกลอย / คงที่' },
-              { value: 'INSTALLMENT', label: 'ผ่อนสินค้า', hint: 'งวดเท่ากัน' },
+              { value: 'INSTALLMENT', label: 'ผ่อนงวด', hint: 'ต้น+ดอก หาร N งวด' },
             ]}
           />
         </Field>

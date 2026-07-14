@@ -11,7 +11,9 @@ import { Button, FormInput, TextInput } from '@/components/form';
 import { IconPlus } from '@/components/icons';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht } from '@/lib/format';
+import { uploadForm } from '@/lib/api';
 import { useCreateDebtor, useDebtors } from '@/lib/hooks/useDebtors';
+import type { EmergencyContact } from '@/lib/types';
 import { toast } from '@/lib/toast-store';
 
 export default function DebtorsPage() {
@@ -31,12 +33,25 @@ const schema = z.object({
 });
 type Form = z.infer<typeof schema>;
 
+const emptyContact = (): EmergencyContact => ({
+  name: '',
+  phone: '',
+  line: '',
+  note: '',
+});
+
 function DebtorsView() {
   const router = useRouter();
   const { data: debtors, error } = useDebtors();
   const createDebtor = useCreateDebtor();
   const [adding, setAdding] = useState(false);
   const [q, setQ] = useState('');
+  const [contacts, setContacts] = useState<EmergencyContact[]>([
+    emptyContact(),
+  ]);
+  const [generalFiles, setGeneralFiles] = useState<File[]>([]);
+  const [identityFiles, setIdentityFiles] = useState<File[]>([]);
+  const [formError, setFormError] = useState('');
 
   const {
     register,
@@ -45,13 +60,50 @@ function DebtorsView() {
     formState: { errors, isSubmitting },
   } = useForm<Form>({ resolver: zodResolver(schema) });
 
-  const onAdd = async (data: Form) => {
-    const created = await createDebtor.mutateAsync(data);
-    reset();
+  const closeAdd = () => {
     setAdding(false);
-    toast(`เพิ่ม "${created.name}" แล้ว — เปิดยอดต่อได้เลย`);
-    // ขั้นถัดไปของงานจริงคือเปิดยอด — พาไปหน้าลูกหนี้เลย ไม่ต้องกลับมาหาในรายชื่อ
-    router.push(`/debtors/${created.id}`);
+    setContacts([emptyContact()]);
+    setGeneralFiles([]);
+    setIdentityFiles([]);
+    setFormError('');
+    reset();
+  };
+
+  const setContact = (
+    index: number,
+    key: keyof EmergencyContact,
+    value: string,
+  ) => {
+    setContacts((prev) =>
+      prev.map((c, i) => (i === index ? { ...c, [key]: value } : c)),
+    );
+  };
+
+  const onAdd = async (data: Form) => {
+    setFormError('');
+    try {
+      const created = await createDebtor.mutateAsync({
+        ...data,
+        emergencyContacts: contacts,
+      });
+
+      const uploads: Array<{ file: File; kind: 'OTHER' | 'ID_CARD' }> = [
+        ...generalFiles.map((file) => ({ file, kind: 'OTHER' as const })),
+        ...identityFiles.map((file) => ({ file, kind: 'ID_CARD' as const })),
+      ];
+      for (const item of uploads) {
+        const form = new FormData();
+        form.append('file', item.file);
+        form.append('kind', item.kind);
+        await uploadForm(`/debtors/${created.id}/attachments`, form);
+      }
+
+      closeAdd();
+      toast(`เพิ่ม "${created.name}" แล้ว — เปิดยอดต่อได้เลย`);
+      router.push(`/debtors/${created.id}`);
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ');
+    }
   };
 
   if (error)
@@ -68,10 +120,10 @@ function DebtorsView() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-[1.375rem] font-bold text-slate-900 md:text-2xl dark:text-white">
+          <h1 className="text-2xl font-bold text-slate-900 md:text-[1.75rem] dark:text-white">
             ลูกหนี้
           </h1>
-          <p className="text-[13px] text-slate-500 dark:text-gray-400">
+          <p className="text-sm text-slate-500 dark:text-gray-400">
             ทั้งหมด {debtors.length} คน
           </p>
         </div>
@@ -149,44 +201,165 @@ function DebtorsView() {
 
       {adding && (
         <div
-          className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center"
-          onClick={() => setAdding(false)}
+          className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center sm:p-6"
+          onClick={closeAdd}
         >
           <form
             onSubmit={handleSubmit(onAdd)}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md space-y-3 rounded-t-lg border border-gray-200 bg-white p-5 sm:rounded-lg dark:border-gray-800 dark:bg-gray-900"
+            className="max-h-[92vh] w-full max-w-xl space-y-4 overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-5 sm:rounded-2xl sm:p-6 dark:border-gray-800 dark:bg-gray-900"
           >
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
               เพิ่มลูกหนี้
             </h2>
-            <FormInput
-              label="ชื่อ *"
-              error={errors.name?.message}
-              {...register('name')}
-            />
-            <FormInput label="เบอร์โทร" {...register('phone')} />
-            <FormInput
-              label="ลิงก์ Facebook"
-              placeholder="https://facebook.com/…"
-              {...register('facebookUrl')}
-            />
-            <FormInput
-              label="LINE ID หรือลิงก์"
-              placeholder="เช่น mylineid หรือ https://line.me/ti/p/…"
-              {...register('lineId')}
-            />
-            <FormInput label="หมายเหตุ" {...register('note')} />
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormInput
+                label="ชื่อลูกหนี้ *"
+                error={errors.name?.message}
+                {...register('name')}
+              />
+              <FormInput label="เบอร์โทร" {...register('phone')} />
+              <FormInput
+                label="ลิงก์ Facebook"
+                placeholder="https://facebook.com/…"
+                {...register('facebookUrl')}
+              />
+              <FormInput
+                label="LINE ID หรือลิงก์"
+                placeholder="mylineid หรือ https://line.me/…"
+                {...register('lineId')}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                รูปและเอกสาร
+              </h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-1.5">
+                  <span className="text-[13px] font-medium text-slate-600 dark:text-gray-300">
+                    รูปทั่วไป
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) =>
+                      setGeneralFiles(Array.from(e.target.files ?? []))
+                    }
+                    className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-xl file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white dark:text-gray-300"
+                  />
+                  {generalFiles.length > 0 && (
+                    <p className="text-xs text-slate-500">
+                      เลือกแล้ว {generalFiles.length} ไฟล์
+                    </p>
+                  )}
+                </label>
+                <label className="block space-y-1.5">
+                  <span className="text-[13px] font-medium text-slate-600 dark:text-gray-300">
+                    เอกสารยืนยันตัวตน
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) =>
+                      setIdentityFiles(Array.from(e.target.files ?? []))
+                    }
+                    className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-xl file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white dark:text-gray-300"
+                  />
+                  {identityFiles.length > 0 && (
+                    <p className="text-xs text-slate-500">
+                      เลือกแล้ว {identityFiles.length} ไฟล์
+                    </p>
+                  )}
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  ผู้ติดต่อคนสนิท
+                </h3>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setContacts((c) => [...c, emptyContact()])
+                  }
+                  className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200"
+                >
+                  <IconPlus className="size-3.5" />
+                  เพิ่มผู้ติดต่อ
+                </button>
+              </div>
+              {contacts.map((c, i) => (
+                <section
+                  key={i}
+                  className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-gray-700"
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-slate-700 dark:text-gray-200">
+                      ผู้ติดต่อ {i + 1}
+                    </p>
+                    {contacts.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setContacts((list) =>
+                            list.filter((_, j) => j !== i),
+                          )
+                        }
+                        className="text-xs font-medium text-red-600"
+                      >
+                        ลบ
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <FormInput
+                      label="ชื่อ"
+                      value={c.name}
+                      onChange={(e) => setContact(i, 'name', e.target.value)}
+                    />
+                    <FormInput
+                      label="เบอร์โทร"
+                      value={c.phone ?? ''}
+                      onChange={(e) => setContact(i, 'phone', e.target.value)}
+                    />
+                    <FormInput
+                      label="LINE"
+                      value={c.line ?? ''}
+                      onChange={(e) => setContact(i, 'line', e.target.value)}
+                    />
+                    <FormInput
+                      label="หมายเหตุ"
+                      value={c.note ?? ''}
+                      onChange={(e) => setContact(i, 'note', e.target.value)}
+                    />
+                  </div>
+                </section>
+              ))}
+            </div>
+
+            <FormInput label="หมายเหตุลูกหนี้" {...register('note')} />
+
+            {formError && (
+              <p className="text-sm font-medium text-red-600">{formError}</p>
+            )}
+
             <div className="flex gap-2 pt-1">
               <Button
+                type="button"
                 variant="secondary"
-                onClick={() => setAdding(false)}
+                onClick={closeAdd}
                 className="flex-1"
               >
                 ยกเลิก
               </Button>
               <Button type="submit" disabled={isSubmitting} className="flex-1">
-                บันทึก
+                {isSubmitting ? 'กำลังบันทึก…' : 'บันทึกลูกหนี้'}
               </Button>
             </div>
           </form>

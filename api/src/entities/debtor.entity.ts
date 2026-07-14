@@ -51,6 +51,18 @@ export class Debtor {
   @Column({ type: 'varchar', nullable: true })
   guarantorPhone: string | null;
 
+  /**
+   * ผู้ติดต่อคนสนิทหลายคน — JSON array
+   * { name, phone?, line?, note? }[]
+   */
+  @Column({ type: 'simple-json', nullable: true })
+  emergencyContacts: Array<{
+    name: string;
+    phone?: string;
+    line?: string;
+    note?: string;
+  }> | null;
+
   @OneToMany(() => Loan, (loan) => loan.debtor)
   loans: Loan[];
 

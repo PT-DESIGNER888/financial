@@ -95,7 +95,7 @@ export class NotifyService {
         l.status === 'DEAD'
           ? ' (ผ่อน)'
           : l.status === 'INSTALLMENT'
-            ? ' (ผ่อนสินค้า)'
+            ? ' (ผ่อนงวด)'
             : '';
       lines.push(`• ${l.debtor?.name ?? ''}${tag}: ฿${fmt(owe)}`);
     }

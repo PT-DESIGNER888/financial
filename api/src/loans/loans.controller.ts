@@ -26,7 +26,7 @@ import { LoansService } from './loans.service';
 class CreateLoanDto {
   @IsString() @IsNotEmpty() debtorId: string;
 
-  /** REVOLVING = ดอกลอย/คงที่ (ค่าเริ่มต้น), INSTALLMENT = ผ่อนสินค้างวดเท่ากัน */
+  /** REVOLVING = ดอกลอย/คงที่ (ค่าเริ่มต้น), INSTALLMENT = ผ่อนงวดงวดเท่ากัน */
   @IsOptional() @IsIn(['REVOLVING', 'INSTALLMENT'])
   type?: 'REVOLVING' | 'INSTALLMENT';
 
@@ -40,7 +40,7 @@ class CreateLoanDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0)
   arrears?: number;
 
-  /** อัตราดอก (ไม่ใช้กับผ่อนสินค้า) */
+  /** อัตราดอก (ไม่ใช้กับผ่อนงวด) */
   @ValidateIf((o) => o.type !== 'INSTALLMENT')
   @Type(() => Number) @IsNumber() @IsPositive() interestRatePercent?: number;
 
@@ -49,11 +49,11 @@ class CreateLoanDto {
   @IsOptional() @IsIn(['FLOATING', 'FLAT'])
   interestMode?: 'FLOATING' | 'FLAT';
 
-  /** ผ่อนสินค้า: จำนวนงวด */
+  /** ผ่อนงวด: จำนวนงวด */
   @ValidateIf((o) => o.type === 'INSTALLMENT')
   @Type(() => Number) @IsInt() @IsPositive() installmentCount?: number;
 
-  /** ผ่อนสินค้า: ยอดผ่อนรวมทั้งสัญญา (ต้น + ดอกรวม) */
+  /** ผ่อนงวด: ยอดผ่อนรวมทั้งสัญญา (ต้น + ดอกรวม) */
   @ValidateIf((o) => o.type === 'INSTALLMENT')
   @Type(() => Number) @IsNumber() @IsPositive() installmentTotal?: number;
 

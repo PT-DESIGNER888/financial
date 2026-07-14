@@ -114,14 +114,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     <Link
                       key={t.href}
                       href={t.href}
-                      className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-[15px] font-medium transition-colors ${
+                      className={`flex items-center gap-3 rounded-xl px-3.5 py-3.5 text-base font-medium transition-colors ${
                         isActive
                           ? 'bg-primary/10 text-primary'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white'
                       }`}
                     >
                       <t.Icon
-                        className={`size-5 shrink-0 ${isActive ? 'text-primary' : 'text-slate-400 dark:text-gray-500'}`}
+                        className={`size-6 shrink-0 ${isActive ? 'text-primary' : 'text-slate-400 dark:text-gray-500'}`}
                       />
                       {t.label}
                     </Link>
@@ -135,13 +135,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="border-t border-slate-100 p-3 dark:border-gray-800">
           <Link
             href="/settings"
-            className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-[15px] font-medium transition-colors ${
+            className={`flex items-center gap-3 rounded-xl px-3.5 py-3.5 text-base font-medium transition-colors ${
               settingsActive
                 ? 'bg-primary/10 text-primary'
                 : 'text-slate-600 hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800'
             }`}
           >
-            <IconSettings className="size-5 text-slate-400 dark:text-gray-500" />
+            <IconSettings className="size-6 text-slate-400 dark:text-gray-500" />
             ตั้งค่า
           </Link>
         </div>
@@ -152,11 +152,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-10 border-b border-[#d7dce3] bg-white print:hidden dark:border-gray-800 dark:bg-gray-900">
           <div className="flex items-center justify-between gap-3 px-4 py-3.5 md:px-10 lg:px-12">
             <div className="min-w-0">
-              <p className="truncate text-[17px] font-bold text-slate-900 md:hidden dark:text-white">
+              <p className="truncate text-lg font-bold text-slate-900 md:hidden dark:text-white">
                 {active?.label ?? (settingsActive ? 'ตั้งค่า' : 'ระบบเงินกู้')}
               </p>
               <div className="hidden md:block">
-                <p className="text-lg font-bold text-slate-900 dark:text-white">
+                <p className="text-xl font-bold text-slate-900 dark:text-white">
                   {active?.label ??
                     (settingsActive ? 'ตั้งค่า' : 'ระบบเงินกู้')}
                 </p>
@@ -175,20 +175,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 href="/settings"
                 title="ตั้งค่า"
                 aria-label="ตั้งค่า"
-                className="flex size-10 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 md:hidden dark:text-gray-300 dark:hover:bg-gray-800"
+                className="flex size-11 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 md:hidden dark:text-gray-300 dark:hover:bg-gray-800"
               >
-                <IconSettings className="size-5" />
+                <IconSettings className="size-6" />
               </Link>
               <button
                 onClick={toggle}
                 title="สลับโหมดสว่าง/มืด"
                 aria-label="สลับโหมดสว่าง/มืด"
-                className="flex size-10 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                className="flex size-11 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 {dark ? (
-                  <IconSun className="size-5" />
+                  <IconSun className="size-6" />
                 ) : (
-                  <IconMoon className="size-5" />
+                  <IconMoon className="size-6" />
                 )}
               </button>
               {accessToken && (
@@ -197,11 +197,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     clear();
                     router.push('/login');
                   }}
-                  className="flex size-10 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 md:size-auto md:gap-1.5 md:px-3.5 md:py-2.5 md:text-sm md:font-medium dark:text-gray-300 dark:hover:bg-gray-800"
+                  className="flex size-11 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 md:size-auto md:gap-2 md:px-4 md:py-2.5 md:text-[15px] md:font-semibold dark:text-gray-300 dark:hover:bg-gray-800"
                   aria-label="ออกจากระบบ"
                   title="ออกจากระบบ"
                 >
-                  <IconLogout className="size-5 md:size-4" />
+                  <IconLogout className="size-6 md:size-5" />
                   <span className="hidden md:inline">ออกจากระบบ</span>
                 </button>
               )}
@@ -209,7 +209,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:px-10 md:pt-10 md:pb-12 lg:px-12">
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-[calc(6.25rem+env(safe-area-inset-bottom))] md:px-10 md:pt-10 md:pb-12 lg:px-12">
           {children}
         </main>
       </div>
@@ -226,18 +226,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <Link
                 key={t.href}
                 href={t.href}
-                className={`flex min-h-[3.25rem] flex-1 flex-col items-center justify-center gap-0.5 px-0.5 pt-2 pb-1.5 text-[11px] transition-colors ${
+                className={`flex min-h-16 flex-1 flex-col items-center justify-center gap-1 px-0.5 pt-2.5 pb-2 text-[13px] transition-colors ${
                   isActive
                     ? 'font-semibold text-primary'
                     : 'font-medium text-slate-400 dark:text-gray-500'
                 }`}
               >
                 <span
-                  className={`flex size-8 items-center justify-center rounded-xl ${
+                  className={`flex size-9 items-center justify-center rounded-xl ${
                     isActive ? 'bg-primary/10' : ''
                   }`}
                 >
-                  <t.Icon className="size-5" />
+                  <t.Icon className="size-6" />
                 </span>
                 <span className="max-w-full truncate leading-none">
                   {t.short}

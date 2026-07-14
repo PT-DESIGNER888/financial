@@ -46,13 +46,13 @@ export class LoansService {
     return loan.cycle === 'DAILY' ? true : diff % 10 === 0;
   }
 
-  /** ยอดผ่อนสินค้าใช่ไหม (ตรวจจาก installmentCount ที่ตั้งไว้ตอนเปิดยอด — คงอยู่แม้ปิด) */
+  /** ยอดผ่อนงวดใช่ไหม (ตรวจจาก installmentCount ที่ตั้งไว้ตอนเปิดยอด — คงอยู่แม้ปิด) */
   isInstallment(loan: Loan): boolean {
     return loan.installmentCount != null;
   }
 
   /**
-   * ตารางผ่อน (amortization schedule) ของยอดผ่อนสินค้า
+   * ตารางผ่อน (amortization schedule) ของยอดผ่อนงวด
    * แต่ละงวดเท่ากัน (งวดสุดท้ายซับเศษ), จัดสรรเงินที่ผ่อนมาแล้วแบบไล่งวด
    * เพื่อบอกงวดที่จ่ายแล้ว/ค้าง และยอดที่ถึงกำหนด ณ วันนี้ (รวมงวดค้าง)
    */
@@ -115,7 +115,7 @@ export class LoansService {
     const loan = await this.findOne(id);
     const schedule = this.buildInstallmentSchedule(loan);
     if (!schedule)
-      throw new BadRequestException('ยอดนี้ไม่ใช่ยอดผ่อนสินค้า');
+      throw new BadRequestException('ยอดนี้ไม่ใช่ยอดผ่อนงวด');
     return schedule;
   }
 
@@ -266,7 +266,7 @@ export class LoansService {
     startDate?: string;
     note?: string;
   }): Promise<Loan> {
-    // ยอดผ่อนสินค้า: กำหนดยอดเต็ม (ต้น+ดอกรวม) แล้วหารเป็น N งวดเท่ากันตั้งแต่ต้น
+    // ยอดผ่อนงวด: กำหนดยอดเต็ม (ต้น+ดอกรวม) แล้วหารเป็น N งวดเท่ากันตั้งแต่ต้น
     if (input.type === 'INSTALLMENT') {
       return this.createInstallment(input);
     }
@@ -302,7 +302,7 @@ export class LoansService {
     return this.loans.save(loan);
   }
 
-  /** เปิดยอดผ่อนสินค้า: ตรึงยอดเต็มแล้วผ่อน N งวดเท่ากันตามรอบ */
+  /** เปิดยอดผ่อนงวด: ตรึงยอดเต็มแล้วผ่อน N งวดเท่ากันตามรอบ */
   private async createInstallment(input: {
     debtorId: string;
     principalOriginal: number;
@@ -382,7 +382,7 @@ export class LoansService {
       });
       return loan;
     }
-    // ยอดตาย/ผ่อนสินค้าดูแค่ deadBalance (ต้น/ค้างเดิมถูกตรึงไว้เฉยๆ)
+    // ยอดตาย/ผ่อนงวดดูแค่ deadBalance (ต้น/ค้างเดิมถูกตรึงไว้เฉยๆ)
     const frozen = loan.deadDate != null || this.isInstallment(loan);
     const settled = frozen
       ? (loan.deadBalance ?? 0) <= 0
@@ -466,10 +466,24 @@ export class LoansService {
     };
     if (loan.status === 'DEAD' || loan.status === 'INSTALLMENT') {
       if (input.deadBalance === undefined)
-        throw new BadRequestException('ยอดตาย/ผ่อนสินค้าให้ปรับ deadBalance');
+        throw new BadRequestException('ยอดตาย/ผ่อนงวดให้ปรับ deadBalance');
       if (input.deadBalance < 0)
         throw new BadRequestException('ยอดต้องไม่ติดลบ');
       loan.deadBalance = round2(input.deadBalance);
+      // ผ่อนงวด: sync ต้นคงเหลือให้สัมพันธ์กับยอดผ่อนที่เหลือ
+      if (
+        loan.status === 'INSTALLMENT' &&
+        loan.installmentTotal &&
+        loan.installmentTotal > 0
+      ) {
+        loan.outstandingPrincipal = round2(
+          (loan.principalOriginal * loan.deadBalance) / loan.installmentTotal,
+        );
+      } else if (input.outstandingPrincipal !== undefined) {
+        if (input.outstandingPrincipal < 0)
+          throw new BadRequestException('ต้นคงเหลือต้องไม่ติดลบ');
+        loan.outstandingPrincipal = round2(input.outstandingPrincipal);
+      }
     } else {
       if (input.outstandingPrincipal !== undefined) {
         if (input.outstandingPrincipal < 0)
@@ -559,7 +573,7 @@ export class LoansService {
       loan.status === 'INSTALLMENT'
     )
       throw new BadRequestException('ยอดนี้เปิดอยู่แล้ว');
-    // ผ่อนสินค้า: กลับสู่สถานะผ่อนต่อ ตรึงตารางผ่อนเดิมไว้
+    // ผ่อนงวด: กลับสู่สถานะผ่อนต่อ ตรึงตารางผ่อนเดิมไว้
     if (this.isInstallment(loan)) {
       loan.status = 'INSTALLMENT';
       loan.closedAt = null;
@@ -569,7 +583,7 @@ export class LoansService {
         loanId: id,
         debtorId: loan.debtorId,
         debtorName: loan.debtor?.name ?? null,
-        message: 'เปิดยอดผ่อนสินค้าคืน',
+        message: 'เปิดยอดผ่อนงวดคืน',
       });
       return loan;
     }

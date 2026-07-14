@@ -26,7 +26,7 @@ const filterOptions: { value: Filter; label: string }[] = [
   { value: 'ACTIVE', label: 'ปกติ' },
   { value: 'OVERDUE', label: 'ค้างชำระ' },
   { value: 'DEAD', label: 'ยอดตาย' },
-  { value: 'INSTALLMENT', label: 'ผ่อนสินค้า' },
+  { value: 'INSTALLMENT', label: 'ผ่อนงวด' },
   { value: 'CLOSED', label: 'ปิดยอดแล้ว' },
   { value: 'BAD_DEBT', label: 'หนี้สูญ' },
 ];
@@ -41,7 +41,7 @@ const statusStyle: Record<LoanStatus, string> = {
 };
 
 function interestLabel(l: LoanListItem): string {
-  if (l.isInstallment) return `ผ่อนสินค้า (${cycleLabel[l.cycle]})`;
+  if (l.isInstallment) return `ผ่อนงวด (${cycleLabel[l.cycle]})`;
   const mode = l.interestMode === 'FLAT' ? 'ดอกคงที่' : 'ดอกลอย';
   return `${mode} ${l.interestRatePercent}%/${cycleLabel[l.cycle]}`;
 }
@@ -80,10 +80,10 @@ function LoansView() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-[1.375rem] font-bold text-slate-900 md:text-2xl dark:text-white">
+          <h1 className="text-2xl font-bold text-slate-900 md:text-[1.75rem] dark:text-white">
             สัญญาเงินกู้
           </h1>
-          <p className="text-[13px] text-slate-500 dark:text-gray-400">
+          <p className="text-sm text-slate-500 dark:text-gray-400">
             ทั้งหมด {loans.length} สัญญา · เปิดอยู่ {openCount}
             {overdueCount > 0 && (
               <span className="text-red-600 dark:text-red-400">

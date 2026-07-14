@@ -51,9 +51,9 @@ function SummaryView() {
     {
       icon: <IconDoc className="size-4.5 text-gray-500 dark:text-gray-400" />,
       chip: 'bg-gray-100 dark:bg-gray-800',
-      label: 'ยอดตาย + ผ่อนสินค้า',
+      label: 'ยอดตาย + ผ่อนงวด',
       value: data.deadBalance + data.installmentBalance,
-      sub: `${data.counts.deadLoans} ยอดตาย · ${data.counts.installmentLoans} ผ่อนสินค้า`,
+      sub: `${data.counts.deadLoans} ยอดตาย · ${data.counts.installmentLoans} ผ่อนงวด`,
     },
     {
       icon: (
@@ -78,10 +78,10 @@ function SummaryView() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-[1.375rem] font-bold text-slate-900 md:text-2xl dark:text-white">
+        <h1 className="text-2xl font-bold text-slate-900 md:text-[1.75rem] dark:text-white">
           ภาพรวมธุรกิจ
         </h1>
-        <p className="text-[13px] leading-relaxed text-slate-500 dark:text-gray-400">
+        <p className="text-sm leading-relaxed text-slate-500 dark:text-gray-400">
           สรุปเงินต้น ดอก และยอดค้างทั้งหมด
         </p>
       </div>
@@ -136,7 +136,7 @@ function SummaryView() {
                 ยอดตาย {data.counts.deadLoans}
               </span>
               <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
-                ผ่อนสินค้า {data.counts.installmentLoans}
+                ผ่อนงวด {data.counts.installmentLoans}
               </span>
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                 ปิดแล้ว {data.counts.closedLoans}

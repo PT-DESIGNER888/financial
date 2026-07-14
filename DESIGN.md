@@ -18,8 +18,9 @@
 ## Typography
 
 - DM Sans (ละติน/ตัวเลข) + Noto Sans Thai — ครอบครัวเดียว หลายน้ำหนัก
-- ตัวเลขยอดเงิน: `text-2xl`/`md:text-3xl` + `tabular-nums` · หัวข้อหน้า ~22px / desktop ~24px
-- Desktop: ความกว้างเนื้อหา `max-w-7xl`, sidebar 288px, ตัวอักษรฐาน 16px
+- ตัวอักษรฐาน ~16px (มือถือ) / ~17px (desktop) — อ่านง่ายกลางแจ้ง
+- ตัวเลขยอดเงิน: `text-2xl`/`md:text-3xl` + `tabular-nums` · หัวข้อหน้า ~24px / desktop ~28px
+- Desktop: ความกว้างเนื้อหา `max-w-7xl`, sidebar 288px
 
 ## Components
 
@@ -27,7 +28,8 @@
 - **List card**: หัวการ์ดมีเส้นคั่น รายการ `divide-y` · มุม `rounded-2xl`
 - **Badge สถานะ**: pill `rounded-full` พื้นสีอ่อน
 - **ไอคอน**: SVG stroke 1.8 มุมมน ชุดเดียวใน `components/icons.tsx` — ห้ามใช้ emoji
-- **ปุ่มหลัก**: `bg-primary text-white` เรียบ ไม่มีเงาสี — มุม `rounded-xl` · focus-visible outline สี primary
+- **ปุ่มหลัก**: `bg-primary text-white` เรียบ ไม่มีเงาสี — มุม `rounded-xl` · สูงอย่างน้อย ~48px · ตัวอักษร `text-base`+
+- **ช่องกรอก**: สูงอย่างน้อย ~48px · ตัวอักษร ≥16px (กัน iOS ซูม)
 - **Loading**: skeleton (`PageSkeleton`) ไม่ใช้ spinner
 
 ## Motion

@@ -141,7 +141,7 @@ export class FinanceService {
       const loan = loanById.get(p.loanId);
       const name = loan?.debtor?.name ?? '';
       const parts = p.onDeadLoan
-        ? [loan?.installmentCount != null ? 'ผ่อนสินค้า' : 'ผ่อนยอดตาย']
+        ? [loan?.installmentCount != null ? 'ผ่อนงวด' : 'ผ่อนยอดตาย']
         : [
             p.arrearsPaid > 0 ? `ค้าง ${p.arrearsPaid}` : '',
             p.interestPaid > 0 ? `ดอก ${p.interestPaid}` : '',

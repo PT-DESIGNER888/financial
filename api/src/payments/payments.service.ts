@@ -119,10 +119,21 @@ export class PaymentsService {
     const frozen = loan.status === 'DEAD' || loan.status === 'INSTALLMENT';
     if (frozen) {
       if (arrearsPaid || interestPaid)
-        throw new BadRequestException('ยอดตาย/ผ่อนสินค้ารับเป็นเงินผ่อนอย่างเดียว');
+        throw new BadRequestException('ยอดตาย/ผ่อนงวดรับเป็นเงินผ่อนอย่างเดียว');
       if (principalPaid > (loan.deadBalance ?? 0))
         throw new BadRequestException('เกินยอดผ่อนคงเหลือ');
       loan.deadBalance = round2((loan.deadBalance ?? 0) - principalPaid);
+      // ผ่อนงวด: ให้ต้นคงเหลือสัมพันธ์กับยอดผ่อนที่เหลือ
+      if (
+        loan.status === 'INSTALLMENT' &&
+        loan.installmentTotal &&
+        loan.installmentTotal > 0
+      ) {
+        loan.outstandingPrincipal = round2(
+          (loan.principalOriginal * (loan.deadBalance ?? 0)) /
+            loan.installmentTotal,
+        );
+      }
     } else {
       if (arrearsPaid > loan.arrears)
         throw new BadRequestException('หักค้างเก่าเกินยอดค้าง');
@@ -160,6 +171,16 @@ export class PaymentsService {
       loan.deadBalance = round2(
         (loan.deadBalance ?? 0) + payment.principalPaid,
       );
+      if (
+        loan.status === 'INSTALLMENT' &&
+        loan.installmentTotal &&
+        loan.installmentTotal > 0
+      ) {
+        loan.outstandingPrincipal = round2(
+          (loan.principalOriginal * (loan.deadBalance ?? 0)) /
+            loan.installmentTotal,
+        );
+      }
     } else {
       loan.arrears = round2(loan.arrears + payment.arrearsPaid);
       loan.outstandingPrincipal = round2(

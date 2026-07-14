@@ -32,4 +32,12 @@ export {
   ChevronDown as IconChevronDown,
   ChevronLeft as IconChevronLeft,
   Calendar as IconCalendar,
+  Phone as IconPhone,
+  MessageCircle as IconMessage,
+  Users as IconFacebook,
+  WalletCards as IconReceive,
+  UserRound as IconUser,
+  CalendarClock as IconCycle,
+  Banknote as IconBanknote,
+  CalendarDays as IconToday,
 } from 'lucide-react';

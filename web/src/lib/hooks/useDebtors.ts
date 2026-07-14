@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Debtor } from '@/lib/types';
+import type { Debtor, EmergencyContact } from '@/lib/types';
 import { invalidateMoney, qk } from './keys';
 
 export function useDebtors() {
@@ -30,6 +30,7 @@ export interface DebtorInput {
   creditNote?: string;
   guarantorName?: string;
   guarantorPhone?: string;
+  emergencyContacts?: EmergencyContact[];
 }
 
 export function useCreateDebtor() {
