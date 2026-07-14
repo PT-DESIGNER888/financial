@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { PageSkeleton } from '@/components/skeleton';
 import { useAuthStore } from '@/lib/auth-store';
 
 /** กันหน้าไว้: ยังไม่ login เด้งไปหน้า login (เช็คหลัง hydrate zustand-persist) */
@@ -15,6 +16,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     if (hydrated && !accessToken) router.replace('/login');
   }, [hydrated, accessToken, router]);
 
-  if (!hydrated || !accessToken) return null;
+  if (!hydrated) return <PageSkeleton />;
+  if (!accessToken) return <PageSkeleton />;
   return <>{children}</>;
 }

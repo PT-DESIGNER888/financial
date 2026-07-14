@@ -40,33 +40,55 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-[85vh] items-center justify-center">
+    <div className="relative flex min-h-dvh items-center justify-center px-4 py-10">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[#eceef1] dark:bg-gray-950"
+      />
+
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900"
+        className="relative w-full max-w-[22rem] space-y-5 rounded-2xl border border-[#d7dce3] bg-white p-7 dark:border-gray-800 dark:bg-gray-900"
       >
-        <div className="flex flex-col items-center gap-2 pb-2">
-          <span className="flex size-12 items-center justify-center rounded-lg bg-primary text-2xl text-white">
+        <div className="flex flex-col items-center gap-3 pb-1 text-center">
+          <span className="flex size-14 items-center justify-center rounded-2xl bg-primary text-2xl font-bold text-white">
             ฿
           </span>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-            ระบบติดตามเงินกู้
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            เข้าสู่ระบบเพื่อใช้งาน
-          </p>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white">
+              ระบบติดตามเงินกู้
+            </h1>
+            <p className="mt-1 text-[13px] leading-relaxed text-slate-500 dark:text-gray-400">
+              เข้าสู่ระบบเพื่อดูยอดเก็บและบันทึกรับเงิน
+            </p>
+          </div>
         </div>
+
         <Field label="ชื่อผู้ใช้" error={errors.username?.message}>
-          <TextInput {...register('username')} autoComplete="username" />
+          <TextInput
+            {...register('username')}
+            autoComplete="username"
+            placeholder="เช่น admin"
+          />
         </Field>
         <Field label="รหัสผ่าน" error={errors.password?.message}>
           <TextInput
             type="password"
             {...register('password')}
             autoComplete="current-password"
+            placeholder="รหัสผ่านของคุณ"
           />
         </Field>
-        {error && <p className="text-sm text-red-500">{error}</p>}
+
+        {error && (
+          <div
+            role="alert"
+            className="rounded-xl bg-red-50 px-3 py-2.5 text-[13px] font-medium text-red-700 dark:bg-red-500/10 dark:text-red-400"
+          >
+            {error}
+          </div>
+        )}
+
         <Button type="submit" block disabled={isSubmitting}>
           {isSubmitting ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
         </Button>

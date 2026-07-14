@@ -81,13 +81,13 @@ function FinanceView() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+        <div className="space-y-1">
+          <h1 className="text-[1.375rem] font-bold text-slate-900 dark:text-white">
             การเงิน & รายงาน
           </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-[13px] leading-relaxed text-slate-500 dark:text-gray-400">
             เงินสดในมือ กระแสเงิน และสมุดธุรกรรม
           </p>
         </div>
@@ -113,7 +113,7 @@ function FinanceView() {
       </div>
 
       {/* เงินสดในมือ */}
-      <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+      <section className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2.5">
             <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
@@ -150,7 +150,7 @@ function FinanceView() {
       </section>
 
       {/* กราฟแนวโน้ม */}
-      <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+      <section className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
         <h2 className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
           เก็บเงินได้ 30 วันล่าสุด
         </h2>
@@ -158,7 +158,7 @@ function FinanceView() {
       </section>
 
       {/* รายงานรายเดือน */}
-      <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+      <section className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
             สรุปรายเดือน
@@ -185,7 +185,7 @@ function FinanceView() {
       </section>
 
       {/* รายรับรายจ่าย */}
-      <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <section className="rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
             รายรับ-รายจ่าย & เงินทุน
@@ -245,7 +245,7 @@ function FinanceView() {
       </section>
 
       {/* สมุดธุรกรรม */}
-      <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <section className="rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">
         <h2 className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-900 dark:border-gray-800 dark:text-white">
           สมุดธุรกรรม — {month}
         </h2>

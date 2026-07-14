@@ -77,18 +77,18 @@ function SettingsView() {
   };
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-[1.375rem] font-bold text-slate-900 dark:text-white">
           ตั้งค่า
         </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className="text-[13px] leading-relaxed text-slate-500 dark:text-gray-400">
           แจ้งเตือน LINE และการติดตามยอดค้าง
         </p>
       </div>
 
       {/* LINE */}
-      <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+      <section className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
         <div className="mb-3 flex items-center gap-2">
           <IconBell className="size-5 text-primary" />
           <h2 className="font-semibold text-gray-900 dark:text-white">
@@ -169,7 +169,7 @@ function SettingsView() {
       </section>
 
       {/* ยอดค้าง */}
-      <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <section className="rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">
         <h2 className="flex items-center gap-2 border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-900 dark:border-gray-800 dark:text-white">
           <IconAlert className="size-4.5 text-red-500" />
           ยอดค้างที่ต้องตาม ({overdue.length})
@@ -232,7 +232,7 @@ function ChangePassword() {
   };
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
       <div className="mb-3 flex items-center gap-2">
         <IconLock className="size-5 text-primary" />
         <h2 className="font-semibold text-gray-900 dark:text-white">
@@ -304,7 +304,7 @@ function BackupRestore() {
   };
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
       <div className="mb-3 flex items-center gap-2">
         <IconDownload className="size-5 text-primary" />
         <h2 className="font-semibold text-gray-900 dark:text-white">

@@ -30,7 +30,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className="min-h-full bg-gray-50 text-gray-800 dark:bg-gray-950 dark:text-gray-200">
+      <body className="min-h-full bg-[#eceef1] text-[#1a222c] dark:bg-gray-950 dark:text-gray-100">
         <QueryProvider>
           <Shell>{children}</Shell>
         </QueryProvider>

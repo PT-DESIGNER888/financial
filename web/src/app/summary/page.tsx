@@ -76,17 +76,17 @@ function SummaryView() {
   ];
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-[1.375rem] font-bold text-slate-900 dark:text-white">
           ภาพรวมธุรกิจ
         </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className="text-[13px] leading-relaxed text-slate-500 dark:text-gray-400">
           สรุปเงินต้น ดอก และยอดค้างทั้งหมด
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800">
+      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-200/80 dark:border-gray-800 dark:bg-gray-800">
         <div className="grid grid-cols-2 gap-px lg:grid-cols-4">
           {money.map((c) => (
             <div key={c.label} className="bg-white p-4 lg:p-5 dark:bg-gray-900">
@@ -96,16 +96,17 @@ function SummaryView() {
                 >
                   {c.icon}
                 </span>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-[13px] leading-snug text-slate-500 dark:text-gray-400">
                   {c.label}
                 </p>
               </div>
               <p
-                className={`mt-3 text-2xl font-bold ${c.color ?? 'text-gray-900 dark:text-white'}`}
+                data-money
+                className={`mt-3 text-2xl font-bold tabular-nums tracking-tight ${c.color ?? 'text-slate-900 dark:text-white'}`}
               >
                 ฿{baht(c.value)}
               </p>
-              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              <p className="mt-0.5 text-[12px] text-slate-500 dark:text-gray-400">
                 {c.sub}
               </p>
             </div>
@@ -113,12 +114,12 @@ function SummaryView() {
         </div>
       </div>
 
-      <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-        <h2 className="flex items-center gap-2 border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-900 dark:border-gray-800 dark:text-white">
-          <IconChart className="size-4.5 text-gray-400" />
+      <section className="rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">
+        <h2 className="flex items-center gap-2 border-b border-slate-100 px-4 py-3.5 text-[13px] font-semibold text-slate-800 dark:border-gray-800 dark:text-white">
+          <IconChart className="size-4.5 text-slate-400" />
           เงินหมุนเวียนสะสม
         </h2>
-        <dl className="divide-y divide-gray-100 px-4 dark:divide-gray-800">
+        <dl className="divide-y divide-slate-100 px-4 dark:divide-gray-800">
           <Row label="ต้นปล่อยออกไปทั้งหมด" value={data.totalPrincipalReleased} />
           <Row label="ต้นที่ได้คืนสะสม" value={data.principalCollected} />
           <Row label="ดอกเก็บได้สะสม" value={data.interestCollected} />

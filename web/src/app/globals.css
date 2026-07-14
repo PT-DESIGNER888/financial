@@ -3,8 +3,18 @@
 /* dark mode แบบ class (สลับด้วยปุ่ม ไม่ตามระบบ) */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+  Palette: primary ต้นฉบับ #3758F9 (TailGrids) + พื้นเทาอ่อน
+*/
 @theme inline {
   --color-primary: #3758f9;
+  --color-ink: #1a222c;
+  --color-muted: #5c6775;
+  --color-surface: #ffffff;
+  --color-canvas: #eceef1;
+  --color-ok: #1f6b4a;
+  --color-bad: #b33b3b;
+  --color-wait: #9a6700;
   --font-sans: var(--font-dm-sans), var(--font-noto-thai), sans-serif;
   --animate-toast-in: toast-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-pop-in: pop-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
@@ -32,14 +42,45 @@
   }
 }
 
-body {
-  font-family: var(--font-sans);
+html {
+  text-size-adjust: 100%;
 }
 
-/* focus ต้องมองเห็นเสมอ (คีย์บอร์ด) */
+body {
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.tabular-nums,
+[data-money] {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+p {
+  text-wrap: pretty;
+}
+
 :where(button, a, input, select, textarea, summary):focus-visible {
   outline: 2px solid #3758f9;
   outline-offset: 2px;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {
