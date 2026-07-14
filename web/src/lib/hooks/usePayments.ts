@@ -8,6 +8,11 @@ export interface Allocation {
   interestPaid: number;
   principalPaid: number;
   dueToday?: number;
+  arrearsDue?: number;
+  interestDue?: number;
+  principalBalance?: number;
+  maxReceivable?: number;
+  remainingPrincipal?: number;
 }
 
 /** ขอการจัดสรรเงินอัตโนมัติ (ค้าง→ดอก→ต้น) — ยิงใหม่เมื่อ amount เปลี่ยน */

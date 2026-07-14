@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { AuthGate } from '@/components/auth-gate';
+import { BackButton } from '@/components/back-button';
 import {
   IconAlert,
   IconBell,
@@ -78,13 +79,16 @@ function SettingsView() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-[1.375rem] font-bold text-slate-900 dark:text-white">
-          ตั้งค่า
-        </h1>
-        <p className="text-[13px] leading-relaxed text-slate-500 dark:text-gray-400">
-          แจ้งเตือน LINE และการติดตามยอดค้าง
-        </p>
+      <div>
+        <BackButton href="/" label="กลับ" />
+        <div className="mt-1 space-y-1">
+          <h1 className="text-[1.375rem] font-bold text-slate-900 md:text-2xl dark:text-white">
+            ตั้งค่า
+          </h1>
+          <p className="text-[13px] leading-relaxed text-slate-500 dark:text-gray-400">
+            แจ้งเตือน LINE และการติดตามยอดค้าง
+          </p>
+        </div>
       </div>
 
       {/* LINE */}

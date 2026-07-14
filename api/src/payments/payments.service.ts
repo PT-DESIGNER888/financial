@@ -31,8 +31,21 @@ export class PaymentsService {
   /** คำนวณการจัดสรรอัตโนมัติ: ค้างเก่า → ดอกวันนี้ → ตัดต้น */
   async suggestAllocation(loanId: string, amount: number) {
     const loan = await this.loansService.findOne(loanId);
-    if (loan.status === 'DEAD' || loan.status === 'INSTALLMENT') {
-      return { arrearsPaid: 0, interestPaid: 0, principalPaid: amount };
+    const frozen = loan.status === 'DEAD' || loan.status === 'INSTALLMENT';
+    if (frozen) {
+      const principalBalance = loan.deadBalance ?? 0;
+      const principalPaid = Math.min(amount, principalBalance);
+      return {
+        arrearsPaid: 0,
+        interestPaid: 0,
+        principalPaid,
+        dueToday: 0,
+        arrearsDue: 0,
+        interestDue: 0,
+        principalBalance,
+        maxReceivable: principalBalance,
+        remainingPrincipal: round2(principalBalance - principalPaid),
+      };
     }
     const today = todayStr();
     const dueToday = this.loansService.isDueOn(loan, today)
@@ -42,14 +55,29 @@ export class PaymentsService {
       .filter((p) => p.paidDate === today)
       .reduce((s, p) => s + p.interestPaid, 0);
     const interestRemaining = Math.max(0, dueToday - paidTodayInterest);
+    const arrearsDue = loan.arrears;
+    const principalBalance = loan.outstandingPrincipal;
+    const maxReceivable = round2(
+      arrearsDue + interestRemaining + principalBalance,
+    );
 
     let rest = amount;
-    const arrearsPaid = Math.min(rest, loan.arrears);
+    const arrearsPaid = Math.min(rest, arrearsDue);
     rest = round2(rest - arrearsPaid);
     const interestPaid = Math.min(rest, interestRemaining);
     rest = round2(rest - interestPaid);
-    const principalPaid = Math.min(rest, loan.outstandingPrincipal);
-    return { arrearsPaid, interestPaid, principalPaid, dueToday };
+    const principalPaid = Math.min(rest, principalBalance);
+    return {
+      arrearsPaid,
+      interestPaid,
+      principalPaid,
+      dueToday,
+      arrearsDue,
+      interestDue: interestRemaining,
+      principalBalance,
+      maxReceivable,
+      remainingPrincipal: round2(principalBalance - principalPaid),
+    };
   }
 
   async record(input: RecordPaymentInput): Promise<Payment> {

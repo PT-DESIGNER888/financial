@@ -55,6 +55,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+@media (min-width: 768px) {
+  body {
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+}
+
 .tabular-nums,
 [data-money] {
   font-variant-numeric: tabular-nums;

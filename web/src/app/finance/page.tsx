@@ -84,7 +84,7 @@ function FinanceView() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-[1.375rem] font-bold text-slate-900 dark:text-white">
+          <h1 className="text-[1.375rem] font-bold text-slate-900 md:text-2xl dark:text-white">
             การเงิน & รายงาน
           </h1>
           <p className="text-[13px] leading-relaxed text-slate-500 dark:text-gray-400">

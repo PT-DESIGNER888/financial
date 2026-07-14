@@ -30,5 +30,6 @@ export {
   Bell as IconBell,
   Send as IconSend,
   ChevronDown as IconChevronDown,
+  ChevronLeft as IconChevronLeft,
   Calendar as IconCalendar,
 } from 'lucide-react';

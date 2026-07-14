@@ -51,10 +51,10 @@ function TodayView() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-[1.375rem] font-bold text-slate-900 dark:text-white">
+        <h1 className="text-[1.375rem] font-bold text-slate-900 md:text-2xl dark:text-white">
           เก็บวันนี้
         </h1>
-        <p className="text-[13px] leading-relaxed text-slate-500 dark:text-gray-400">
+        <p className="text-[13px] leading-relaxed text-slate-500 md:text-sm dark:text-gray-400">
           รายการที่ถึงกำหนดและยอดค้างของวันนี้ — แตะรับเงินได้ทันที
         </p>
       </div>
@@ -189,26 +189,28 @@ function StatCell({
   emphasize?: boolean;
 }) {
   return (
-    <div className="bg-white p-4 lg:p-5 dark:bg-gray-900">
+    <div className="bg-white p-4 lg:p-6 dark:bg-gray-900">
       <div className="flex items-center gap-2.5">
         <span
-          className={`flex size-9 shrink-0 items-center justify-center rounded-full ${chip}`}
+          className={`flex size-9 shrink-0 items-center justify-center rounded-full md:size-10 ${chip}`}
         >
           {icon}
         </span>
-        <p className="text-[13px] leading-snug text-slate-500 dark:text-gray-400">
+        <p className="text-[13px] leading-snug text-slate-500 md:text-sm dark:text-gray-400">
           {label}
         </p>
       </div>
       <p
         data-money
         className={`mt-3 font-bold tracking-tight text-slate-900 tabular-nums dark:text-white ${
-          emphasize ? 'text-[1.625rem]' : 'text-2xl'
+          emphasize
+            ? 'text-[1.625rem] md:text-3xl'
+            : 'text-2xl md:text-[1.75rem]'
         }`}
       >
         {value}
       </p>
-      <p className="mt-0.5 text-[12px] text-slate-500 dark:text-gray-400">
+      <p className="mt-0.5 text-[12px] text-slate-500 md:text-[13px] dark:text-gray-400">
         {sub}
       </p>
     </div>
@@ -224,7 +226,7 @@ function ListCard({
 }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">
-      <h2 className="border-b border-slate-100 px-4 py-3.5 text-[13px] font-semibold text-slate-800 dark:border-gray-800 dark:text-gray-100">
+      <h2 className="border-b border-slate-100 px-4 py-3.5 text-[13px] font-semibold text-slate-800 md:px-5 md:text-sm dark:border-gray-800 dark:text-gray-100">
         {title}
       </h2>
       <div className="divide-y divide-slate-100 dark:divide-gray-800">
@@ -250,13 +252,13 @@ function ItemRow({ item, onPay }: { item: TodayItem; onPay: () => void }) {
   const done = item.remainingToday <= 0;
   const frozen = item.status === 'DEAD' || item.status === 'INSTALLMENT';
   return (
-    <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+    <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4 md:px-5 md:py-4">
       <Link
         href={`/debtors/${item.debtorId}`}
         className="min-w-0 flex-1 rounded-lg transition-colors hover:bg-slate-50 sm:-mx-2 sm:px-2 sm:py-1 dark:hover:bg-gray-800/60"
       >
         <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900 dark:text-white">
-          <span className="truncate text-[15px]">{item.debtorName}</span>
+          <span className="truncate text-[15px] md:text-base">{item.debtorName}</span>
           <StatusBadge paid={done} />
           {item.status === 'DEAD' && (
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-gray-800 dark:text-gray-400">

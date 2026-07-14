@@ -171,8 +171,8 @@ const buttonVariant: Record<ButtonVariant, string> = {
 };
 
 const buttonSize: Record<ButtonSize, string> = {
-  sm: 'min-h-9 px-3.5 py-2 text-[13px]',
-  md: 'min-h-11 px-4 py-2.5 text-[14px]',
+  sm: 'min-h-9 px-3.5 py-2 text-[13px] md:min-h-10 md:text-sm',
+  md: 'min-h-11 px-4 py-2.5 text-[14px] md:min-h-12 md:px-5 md:text-[15px]',
 };
 
 /** ปุ่มกลางของทั้งแอป — variant primary/secondary/danger, size sm/md */
@@ -198,12 +198,14 @@ export function ModalButtons({
   saving,
   saveLabel = 'บันทึก',
   danger,
+  disabled,
 }: {
   onClose: () => void;
   onSave: () => void;
   saving: boolean;
   saveLabel?: string;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex gap-2 pt-1">
@@ -213,7 +215,7 @@ export function ModalButtons({
       <Button
         variant={danger ? 'danger' : 'primary'}
         onClick={onSave}
-        disabled={saving}
+        disabled={saving || disabled}
         className="flex-1"
       >
         {saving ? 'กำลังบันทึก…' : saveLabel}

@@ -2,6 +2,7 @@
 
 import { use, useState } from 'react';
 import { AuthGate } from '@/components/auth-gate';
+import { BackButton } from '@/components/back-button';
 import {
   IconAdjust,
   IconBan,
@@ -122,9 +123,11 @@ function DebtorView({ id }: { id: string }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3">
+      <div>
+        <BackButton href="/debtors" label="ลูกหนี้" />
+        <div className="mt-1 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="flex flex-wrap items-center gap-2 text-xl font-bold text-gray-900 dark:text-white">
+          <h1 className="flex flex-wrap items-center gap-2 text-[1.375rem] font-bold text-slate-900 dark:text-white">
             <span className="truncate">{debtor.name}</span>
             {debtor.blacklisted && (
               <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/10 dark:text-red-400">
@@ -225,6 +228,7 @@ function DebtorView({ id }: { id: string }) {
             <IconPlus className="size-4" />
             เปิดยอดใหม่
           </Button>
+        </div>
         </div>
       </div>
 

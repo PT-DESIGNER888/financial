@@ -18,7 +18,8 @@
 ## Typography
 
 - DM Sans (ละติน/ตัวเลข) + Noto Sans Thai — ครอบครัวเดียว หลายน้ำหนัก
-- ตัวเลขยอดเงิน: `text-2xl font-bold` + `tabular-nums` · หัวข้อหน้า ~22px bold
+- ตัวเลขยอดเงิน: `text-2xl`/`md:text-3xl` + `tabular-nums` · หัวข้อหน้า ~22px / desktop ~24px
+- Desktop: ความกว้างเนื้อหา `max-w-7xl`, sidebar 288px, ตัวอักษรฐาน 16px
 
 ## Components
 

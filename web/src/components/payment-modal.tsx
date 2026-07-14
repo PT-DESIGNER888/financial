@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ModalButtons, TextInput } from '@/components/form';
 import { baht } from '@/lib/format';
+import { confirmDialog } from '@/lib/confirm-store';
 import {
   useRecordPayment,
   useSuggestAllocation,
@@ -14,7 +15,7 @@ interface Props {
   debtorName: string;
   /** ยอดตาย/ผ่อนสินค้า: รับเป็นเงินผ่อนก้อนเดียว หักจากยอดคงเหลือ */
   frozen: boolean;
-  /** ปุ่มยอดด่วน — แตะครั้งเดียวเติมจำนวนเงิน (เช่น ยอดที่ต้องเก็บวันนี้) */
+  /** ปุ่มยอดด่วน เช่น ยอดที่ต้องเก็บวันนี้ */
   quickAmounts?: { label: string; amount: number }[];
   onClose: () => void;
   onSaved: () => void;
@@ -25,10 +26,11 @@ function round2(n: number): number {
 }
 
 /**
- * บันทึกรับเงิน: พิมพ์จำนวนเดียว ระบบจัดสรรให้ตามลำดับ
- *   1) ค้างเก่า  2) ดอกวันนี้  3) ถ้ามีเงินเหลือ → ถามว่าจะตัดต้นไหม
- * แก้ค้างเก่า/ดอกได้ก่อนบันทึก ส่วนเงินเหลือเลือก "ตัดต้น" หรือ "ไม่ตัด"
- * ยอดที่บันทึกจริง = ค้าง + ดอก + (ตัดต้นถ้าเลือก)
+ * รับเงิน (ตาม Codex ล่าสุด):
+ * - กรอกยอดรับ → คำนวณค้าง/ดอก/ต้นให้อัตโนมัติ
+ * - แก้ตัวเลขจัดสรรได้ + ปุ่มคำนวณใหม่
+ * - จ่ายคืนทั้งหมด / ยอดเกินถามก่อนบันทึก
+ * - การ์ดกว้าง ลำดับชัด: ยอดรับ → จัดสรร 3 ช่อง → บันทึก
  */
 export function PaymentModal({
   loanId,
@@ -41,102 +43,176 @@ export function PaymentModal({
   const [amount, setAmount] = useState('');
   const [arrearsPaid, setArrearsPaid] = useState(0);
   const [interestPaid, setInterestPaid] = useState(0);
-  const [cutPrincipal, setCutPrincipal] = useState(true);
-  const [touched, setTouched] = useState(false);
+  const [principalPaid, setPrincipalPaid] = useState(0);
+  const [manual, setManual] = useState(false);
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [debouncedAmount, setDebouncedAmount] = useState(0);
 
   const amountNum = parseFloat(amount) || 0;
+  const amountEmpty = amount.trim() === '' || amountNum <= 0;
 
-  // เงินที่เหลือหลังหักค้างเก่า + ดอกวันนี้ → เป็นก้อนที่จะถามว่าตัดต้นไหม
-  const leftover = round2(Math.max(0, amountNum - arrearsPaid - interestPaid));
-  const principalPaid = frozen ? amountNum : cutPrincipal ? leftover : 0;
-  const recordedAmount = frozen
-    ? amountNum
-    : round2(arrearsPaid + interestPaid + principalPaid);
-
-  // ดีเลย์ก่อนขอการจัดสรร กันยิงทุกตัวอักษร
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedAmount(amountNum), 300);
+    const t = setTimeout(() => setDebouncedAmount(amountNum), 250);
     return () => clearTimeout(t);
   }, [amountNum]);
+
+  const { data: ceiling } = useSuggestAllocation(loanId, 1e12, true);
+  const maxReceivable = ceiling?.maxReceivable ?? 0;
+  const principalBalance = ceiling?.principalBalance ?? 0;
 
   const { data: suggestion, isFetching: suggesting } = useSuggestAllocation(
     loanId,
     debouncedAmount,
-    !frozen && !touched,
+    !amountEmpty,
   );
-  // การจัดสรรอัตโนมัติยังไม่นิ่ง (รอ debounce/รอ API) — กัน Enter บันทึกแซง
-  const allocationPending =
-    !frozen && !touched && (debouncedAmount !== amountNum || suggesting);
+  const suggestionPending =
+    !amountEmpty && (debouncedAmount !== amountNum || suggesting);
 
-  // เติมค้างเก่า/ดอกที่ระบบแนะนำ (ถ้ายังไม่แก้เอง)
+  // เติมอัตโนมัติเมื่อยังไม่แก้เอง
   useEffect(() => {
-    if (suggestion && !touched) {
-      setArrearsPaid(suggestion.arrearsPaid);
-      setInterestPaid(suggestion.interestPaid);
-    }
-  }, [suggestion, touched]);
+    if (!suggestion || manual || amountEmpty) return;
+    setArrearsPaid(suggestion.arrearsPaid);
+    setInterestPaid(suggestion.interestPaid);
+    setPrincipalPaid(suggestion.principalPaid);
+  }, [suggestion, manual, amountEmpty]);
+
+  const allocated = round2(arrearsPaid + interestPaid + principalPaid);
+  const remainingPrincipal = round2(
+    Math.max(0, principalBalance - principalPaid),
+  );
+  const overAllocated = !amountEmpty && allocated > amountNum + 0.001;
+  const excessReceive = amountEmpty
+    ? 0
+    : round2(Math.max(0, amountNum - maxReceivable));
 
   const record = useRecordPayment();
 
+  const applyAmount = (n: number) => {
+    setAmount(String(n));
+    setManual(false);
+    setError('');
+  };
+
+  const recalculate = () => {
+    setManual(false);
+    setError('');
+    if (suggestion) {
+      setArrearsPaid(suggestion.arrearsPaid);
+      setInterestPaid(suggestion.interestPaid);
+      setPrincipalPaid(suggestion.principalPaid);
+    }
+  };
+
   const save = async () => {
     setError('');
-    if (amountNum <= 0) {
-      setError('กรอกจำนวนเงิน');
+    if (amountEmpty) {
+      setError('กรุณากรอกจำนวนเงินที่รับ');
       return;
     }
-    if (recordedAmount <= 0) {
-      setError('ยอดที่จะบันทึกเป็น 0 — ปรับการจัดสรร');
+    if (!manual && suggestionPending) {
+      setError('กำลังคำนวณ…');
       return;
     }
-    const alloc = frozen
-      ? { arrearsPaid: 0, interestPaid: 0, principalPaid: amountNum }
-      : { arrearsPaid, interestPaid, principalPaid };
+    if (allocated <= 0) {
+      setError('ยอดที่จะบันทึกเป็น 0');
+      return;
+    }
+    if (overAllocated) {
+      setError(`ยอดตัดเกินยอดรับ ฿${baht(round2(allocated - amountNum))}`);
+      return;
+    }
+
+    let saveAmount = allocated;
+    let saveNote = note.trim();
+    let alloc = { arrearsPaid, interestPaid, principalPaid };
+
+    if (excessReceive > 0) {
+      const ok = await confirmDialog({
+        title: `ยอดรับเกิน ฿${baht(excessReceive)}`,
+        detail: `จะบันทึกตามยอดจัดสรร ฿${baht(allocated)} ส่วนที่เกินไม่ผูกกับสัญญา`,
+        confirmLabel: 'บันทึก',
+      });
+      if (!ok) return;
+      saveNote = [saveNote, `รับเกิน ฿${baht(excessReceive)} ไม่บันทึกในสัญญา`]
+        .filter(Boolean)
+        .join(' · ');
+    }
+
+    if (frozen) {
+      alloc = {
+        arrearsPaid: 0,
+        interestPaid: 0,
+        principalPaid: allocated,
+      };
+      saveAmount = allocated;
+    }
+
+    saveAmount = allocated;
+
     try {
       await record.mutateAsync({
         loanId,
-        amount: recordedAmount,
+        amount: saveAmount,
         ...alloc,
-        note: note || undefined,
+        note: saveNote || undefined,
       });
-      toast(`บันทึกรับเงิน ฿${baht(recordedAmount)} — ${debtorName}`);
+      toast(`บันทึกรับเงิน ฿${baht(saveAmount)} — ${debtorName}`);
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ');
     }
   };
 
-  const numInput = (value: number, set: (n: number) => void) => (
-    <TextInput
-      type="number"
-      inputMode="decimal"
-      align="right"
-      value={value === 0 ? '' : value}
-      placeholder="0"
-      onChange={(e) => {
-        setTouched(true);
-        set(parseFloat(e.target.value) || 0);
-      }}
-    />
+  const numField = (
+    label: string,
+    value: number,
+    set: (n: number) => void,
+  ) => (
+    <div className="min-w-0">
+      <label className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-gray-300">
+        {label}
+      </label>
+      <TextInput
+        type="number"
+        inputMode="decimal"
+        align="right"
+        value={amountEmpty ? '' : value === 0 ? '0' : value}
+        disabled={amountEmpty}
+        placeholder="—"
+        onChange={(e) => {
+          setManual(true);
+          set(parseFloat(e.target.value) || 0);
+          setError('');
+        }}
+        className="h-12 text-base tabular-nums md:h-14 md:text-lg"
+      />
+    </div>
   );
 
   return (
     <div
-      className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center"
+      className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center sm:p-6"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md space-y-3 rounded-t-lg border border-gray-200 bg-white p-5 sm:rounded-lg dark:border-gray-800 dark:bg-gray-900"
+        className="max-h-[92vh] w-full max-w-xl space-y-5 overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-5 sm:rounded-2xl sm:p-7 md:p-8 dark:border-gray-800 dark:bg-gray-900"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-          รับเงิน — {debtorName}
-        </h2>
+        <header>
+          <h2 className="text-xl font-bold tracking-tight text-slate-900 md:text-2xl dark:text-white">
+            รับเงิน
+          </h2>
+          <p className="mt-1 text-sm text-slate-500 md:text-[15px] dark:text-gray-400">
+            {debtorName}
+            {maxReceivable > 0 && (
+              <> · ยอดค้างทั้งหมด ฿{baht(maxReceivable)}</>
+            )}
+          </p>
+        </header>
 
         <div>
-          <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">
+          <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-gray-300">
             จำนวนเงินที่รับ (บาท)
           </label>
           <input
@@ -147,136 +223,127 @@ export function PaymentModal({
             value={amount}
             onChange={(e) => {
               setAmount(e.target.value);
-              setTouched(false);
-              setCutPrincipal(true);
+              setManual(false);
+              setError('');
             }}
             onKeyDown={(e) => {
-              // กด Enter/Go จากแป้นตัวเลข = บันทึกเลย (ใช้มือเดียวหน้างาน)
-              // รอการจัดสรรอัตโนมัตินิ่งก่อน กันเงินลงตัดต้นหมดโดยไม่ตั้งใจ
-              if (e.key === 'Enter' && !record.isPending && !allocationPending)
-                save();
+              if (
+                e.key === 'Enter' &&
+                !record.isPending &&
+                !(!manual && suggestionPending)
+              )
+                void save();
             }}
-            className="w-full rounded-lg border-2 border-primary bg-white px-3 py-3 text-right text-2xl font-bold text-gray-900 focus:outline-none dark:bg-gray-800 dark:text-white"
+            className="w-full rounded-2xl border-2 border-primary bg-white px-4 py-4 text-right text-3xl font-bold text-slate-900 tabular-nums focus:outline-none md:py-5 md:text-4xl dark:bg-gray-800 dark:text-white"
+            placeholder="0"
           />
         </div>
 
-        {/* ยอดด่วน — เคสที่บ่อยที่สุดคือเก็บตามยอดพอดี ให้จบในแตะเดียว */}
-        {quickAmounts && quickAmounts.some((q) => q.amount > 0) && (
-          <div className="flex flex-wrap gap-2">
-            {quickAmounts
-              .filter((q) => q.amount > 0)
-              .map((q) => {
-                const selected = amountNum === q.amount;
-                return (
-                  <button
-                    key={q.label}
-                    type="button"
-                    onClick={() => {
-                      setAmount(String(q.amount));
-                      setTouched(false);
-                      setCutPrincipal(true);
-                    }}
-                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
-                      selected
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-gray-300 text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800'
-                    }`}
-                  >
-                    {q.label} ฿{baht(q.amount)}
-                  </button>
-                );
-              })}
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2.5">
+          {maxReceivable > 0 && (
+            <button
+              type="button"
+              onClick={() => applyAmount(maxReceivable)}
+              className={`min-h-11 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors md:text-[15px] ${
+                amountNum === maxReceivable
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800'
+              }`}
+            >
+              จ่ายคืนทั้งหมด ฿{baht(maxReceivable)}
+            </button>
+          )}
+          {quickAmounts
+            ?.filter((q) => q.amount > 0 && q.amount !== maxReceivable)
+            .map((q) => (
+              <button
+                key={q.label}
+                type="button"
+                onClick={() => applyAmount(q.amount)}
+                className={`min-h-11 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors md:text-[15px] ${
+                  amountNum === q.amount
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800'
+                }`}
+              >
+                {q.label} ฿{baht(q.amount)}
+              </button>
+            ))}
+          {!amountEmpty && (
+            <button
+              type="button"
+              onClick={recalculate}
+              className="min-h-11 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 md:text-[15px] dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              คำนวณใหม่
+            </button>
+          )}
+        </div>
 
-        {frozen ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            เงินผ่อน — เงินทั้งก้อนหักจากยอดผ่อนคงเหลือ
-          </p>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
-                  หักค้างเก่า
-                </label>
-                {numInput(arrearsPaid, setArrearsPaid)}
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
-                  ดอกวันนี้
-                </label>
-                {numInput(interestPaid, setInterestPaid)}
-              </div>
+        <section aria-live="polite" aria-label="จัดสรรยอดรับ" className="space-y-3">
+          <h3 className="text-base font-semibold text-slate-900 md:text-lg dark:text-white">
+            จัดสรรยอดรับ
+          </h3>
+
+          {frozen ? (
+            numField('หักยอดผ่อน', principalPaid, setPrincipalPaid)
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+              {numField('ค้างเก่า', arrearsPaid, setArrearsPaid)}
+              {numField('ดอกวันนี้', interestPaid, setInterestPaid)}
+              {numField('ตัดเงินต้น', principalPaid, setPrincipalPaid)}
             </div>
+          )}
 
-            {/* ข้อ 3: มีเงินเหลือ → ถามว่าจะตัดต้นไหม */}
-            {amountNum > 0 && leftover > 0 && (
-              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-                <p className="text-sm text-gray-700 dark:text-gray-200">
-                  เหลือจากค้าง+ดอกอีก{' '}
-                  <b className="text-gray-900 dark:text-white">
-                    ฿{baht(leftover)}
-                  </b>{' '}
-                  — นำไปตัดต้นไหม?
-                </p>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCutPrincipal(true)}
-                    className={`rounded-lg py-2 text-sm font-semibold transition-colors ${
-                      cutPrincipal
-                        ? 'bg-primary text-white'
-                        : 'border border-gray-300 text-gray-600 dark:border-gray-700 dark:text-gray-300'
-                    }`}
-                  >
-                    ตัดต้น ฿{baht(leftover)}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCutPrincipal(false)}
-                    className={`rounded-lg py-2 text-sm font-semibold transition-colors ${
-                      !cutPrincipal
-                        ? 'bg-gray-700 text-white dark:bg-gray-600'
-                        : 'border border-gray-300 text-gray-600 dark:border-gray-700 dark:text-gray-300'
-                    }`}
-                  >
-                    ไม่ตัด (รับแค่ดอก+ค้าง)
-                  </button>
-                </div>
-                {!cutPrincipal && (
-                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    บันทึกเฉพาะ ฿{baht(recordedAmount)} — เงินเหลือ ฿
-                    {baht(leftover)} ไม่ถูกบันทึก
-                  </p>
-                )}
-              </div>
-            )}
-          </>
-        )}
+          <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 text-sm md:text-[15px] dark:bg-gray-950/60">
+            <span className="text-slate-500 dark:text-gray-400">
+              {frozen ? 'ยอดผ่อนคงเหลือ' : 'เงินต้นคงเหลือ'}
+            </span>
+            <strong className="text-base tabular-nums text-slate-900 md:text-lg dark:text-white">
+              {amountEmpty ? '—' : `฿${baht(remainingPrincipal)}`}
+            </strong>
+          </div>
+        </section>
 
-        <TextInput
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="หมายเหตุ (ไม่บังคับ)"
-          className="text-sm"
-        />
-
-        {!frozen && amountNum > 0 && (
-          <p className="text-right text-sm text-gray-600 dark:text-gray-300">
-            ยอดที่บันทึก{' '}
-            <b className="text-gray-900 dark:text-white">
-              ฿{baht(recordedAmount)}
-            </b>
+        {(overAllocated || excessReceive > 0) && !amountEmpty && (
+          <p className="text-sm font-medium text-red-600 dark:text-red-400">
+            {overAllocated
+              ? `ยอดตัดเกินยอดรับ ฿${baht(round2(allocated - amountNum))}`
+              : `ยอดรับเกิน ฿${baht(excessReceive)}`}
           </p>
         )}
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-gray-300">
+            หมายเหตุ
+          </label>
+          <TextInput
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="ไม่บังคับ"
+            className="h-12 text-sm md:text-[15px]"
+          />
+        </div>
+
+        {error && (
+          <p className="text-sm font-medium text-red-600 dark:text-red-400">
+            {error}
+          </p>
+        )}
+        {amountEmpty && !error && (
+          <p className="text-sm text-red-600 dark:text-red-400">
+            กรุณากรอกจำนวนเงินที่รับ
+          </p>
+        )}
 
         <ModalButtons
           onClose={onClose}
-          onSave={save}
+          onSave={() => void save()}
           saving={record.isPending}
+          saveLabel="บันทึกการรับเงิน"
+          disabled={
+            amountEmpty || overAllocated || (!manual && suggestionPending)
+          }
         />
       </div>
     </div>

@@ -88,14 +88,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
       {/* Sidebar — desktop */}
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r border-[#d7dce3] bg-white md:flex print:hidden dark:border-gray-800 dark:bg-gray-900">
-        <div className="flex items-center gap-3 px-5 pt-6 pb-5">
-          <BrandLogo size="md" />
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 flex-col border-r border-[#d7dce3] bg-white md:flex print:hidden dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex items-center gap-3 px-5 pt-7 pb-6">
+          <BrandLogo size="lg" />
           <div className="min-w-0">
-            <p className="truncate text-[15px] font-bold text-slate-900 dark:text-white">
+            <p className="truncate text-base font-bold text-slate-900 dark:text-white">
               ระบบเงินกู้
             </p>
-            <p className="text-[12px] text-slate-500 dark:text-gray-400">
+            <p className="text-[13px] text-slate-500 dark:text-gray-400">
               ดอกลอย · รายวัน / 10 วัน
             </p>
           </div>
@@ -104,7 +104,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 space-y-6 overflow-y-auto px-3 pb-4">
           {menu.map((g) => (
             <div key={g.group}>
-              <p className="mb-1.5 px-3 text-[12px] font-medium text-slate-400 dark:text-gray-500">
+              <p className="mb-1.5 px-3 text-[13px] font-medium text-slate-400 dark:text-gray-500">
                 {g.group}
               </p>
               <div className="space-y-0.5">
@@ -114,7 +114,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     <Link
                       key={t.href}
                       href={t.href}
-                      className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[14px] font-medium transition-colors ${
+                      className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-[15px] font-medium transition-colors ${
                         isActive
                           ? 'bg-primary/10 text-primary'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white'
@@ -135,7 +135,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="border-t border-slate-100 p-3 dark:border-gray-800">
           <Link
             href="/settings"
-            className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[14px] font-medium transition-colors ${
+            className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-[15px] font-medium transition-colors ${
               settingsActive
                 ? 'bg-primary/10 text-primary'
                 : 'text-slate-600 hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800'
@@ -148,21 +148,27 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Content */}
-      <div className="flex min-h-screen flex-1 flex-col md:pl-64 print:pl-0">
+      <div className="flex min-h-screen flex-1 flex-col md:pl-72 print:pl-0">
         <header className="sticky top-0 z-10 border-b border-[#d7dce3] bg-white print:hidden dark:border-gray-800 dark:bg-gray-900">
-          <div className="flex items-center justify-between gap-3 px-4 py-3.5 md:px-8">
+          <div className="flex items-center justify-between gap-3 px-4 py-3.5 md:px-10 lg:px-12">
             <div className="min-w-0">
               <p className="truncate text-[17px] font-bold text-slate-900 md:hidden dark:text-white">
                 {active?.label ?? (settingsActive ? 'ตั้งค่า' : 'ระบบเงินกู้')}
               </p>
-              <p className="hidden text-[13px] text-slate-500 md:block dark:text-gray-400">
-                {new Date().toLocaleDateString('th-TH', {
-                  weekday: 'long',
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                })}
-              </p>
+              <div className="hidden md:block">
+                <p className="text-lg font-bold text-slate-900 dark:text-white">
+                  {active?.label ??
+                    (settingsActive ? 'ตั้งค่า' : 'ระบบเงินกู้')}
+                </p>
+                <p className="text-[13px] text-slate-500 dark:text-gray-400">
+                  {new Date().toLocaleDateString('th-TH', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-1.5">
               <Link
@@ -191,7 +197,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     clear();
                     router.push('/login');
                   }}
-                  className="flex size-10 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 md:size-auto md:gap-1.5 md:px-3 md:py-2 md:text-[13px] md:font-medium dark:text-gray-300 dark:hover:bg-gray-800"
+                  className="flex size-10 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 md:size-auto md:gap-1.5 md:px-3.5 md:py-2.5 md:text-sm md:font-medium dark:text-gray-300 dark:hover:bg-gray-800"
                   aria-label="ออกจากระบบ"
                   title="ออกจากระบบ"
                 >
@@ -203,7 +209,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:px-8 md:pt-8 md:pb-10">
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:px-10 md:pt-10 md:pb-12 lg:px-12">
           {children}
         </main>
       </div>
