@@ -35,6 +35,10 @@ export interface Debtor {
   id: string;
   name: string;
   phone: string | null;
+  facebookUrl: string | null;
+  lineId: string | null;
+  relativeName: string | null;
+  relativePhone: string | null;
   note: string | null;
   blacklisted: boolean;
   creditNote: string | null;
@@ -72,6 +76,7 @@ export interface OverdueItem {
 
 export interface Loan {
   id: string;
+  contractNumber: string | null;
   debtorId: string;
   debtor?: Debtor;
   status: LoanStatus;
@@ -91,6 +96,27 @@ export interface Loan {
   note: string | null;
   payments?: Payment[];
   createdAt: string;
+}
+
+/** แถวในหน้า "สัญญาเงินกู้" — ยอดสรุปต่อสัญญาจาก GET /loans */
+export interface LoanListItem {
+  id: string;
+  contractNumber: string | null;
+  debtorId: string;
+  debtorName: string;
+  status: LoanStatus;
+  cycle: LoanCycle;
+  interestMode: InterestMode;
+  isInstallment: boolean;
+  interestRatePercent: number;
+  principalOriginal: number;
+  paidTotal: number;
+  remaining: number;
+  totalDue: number;
+  nextDueDate: string | null;
+  overdue: boolean;
+  startDate: string;
+  note: string | null;
 }
 
 export type ScheduleRowStatus = 'PAID' | 'PARTIAL' | 'DUE' | 'PENDING';

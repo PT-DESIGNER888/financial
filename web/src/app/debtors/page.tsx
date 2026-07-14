@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { AuthGate } from '@/components/auth-gate';
-import { Button, Field, TextInput } from '@/components/form';
+import { Button, FormInput, TextInput } from '@/components/form';
 import { IconPlus } from '@/components/icons';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht } from '@/lib/format';
@@ -25,6 +25,8 @@ export default function DebtorsPage() {
 const schema = z.object({
   name: z.string().min(1, 'กรอกชื่อ'),
   phone: z.string().optional(),
+  facebookUrl: z.string().optional(),
+  lineId: z.string().optional(),
   note: z.string().optional(),
 });
 type Form = z.infer<typeof schema>;
@@ -156,15 +158,23 @@ function DebtorsView() {
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">
               เพิ่มลูกหนี้
             </h2>
-            <Field label="ชื่อ *" error={errors.name?.message}>
-              <TextInput {...register('name')} />
-            </Field>
-            <Field label="เบอร์โทร">
-              <TextInput {...register('phone')} />
-            </Field>
-            <Field label="หมายเหตุ">
-              <TextInput {...register('note')} />
-            </Field>
+            <FormInput
+              label="ชื่อ *"
+              error={errors.name?.message}
+              {...register('name')}
+            />
+            <FormInput label="เบอร์โทร" {...register('phone')} />
+            <FormInput
+              label="ลิงก์ Facebook"
+              placeholder="https://facebook.com/…"
+              {...register('facebookUrl')}
+            />
+            <FormInput
+              label="LINE ID หรือลิงก์"
+              placeholder="เช่น mylineid หรือ https://line.me/ti/p/…"
+              {...register('lineId')}
+            />
+            <FormInput label="หมายเหตุ" {...register('note')} />
             <div className="flex gap-2 pt-1">
               <Button
                 variant="secondary"

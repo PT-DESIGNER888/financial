@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import {
   IconChart,
   IconCoins,
+  IconDoc,
   IconList,
   IconLogout,
   IconMoon,
@@ -24,7 +25,10 @@ const menu = [
   },
   {
     group: 'จัดการ',
-    items: [{ href: '/debtors', label: 'ลูกหนี้', Icon: IconUsers }],
+    items: [
+      { href: '/debtors', label: 'ลูกหนี้', Icon: IconUsers },
+      { href: '/loans', label: 'สัญญาเงินกู้', Icon: IconDoc },
+    ],
   },
   {
     group: 'รายงาน',

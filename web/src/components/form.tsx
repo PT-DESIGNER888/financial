@@ -57,6 +57,22 @@ export const TextInput = React.forwardRef<HTMLInputElement, TextInputProps>(
 );
 TextInput.displayName = 'TextInput';
 
+type FormInputProps = TextInputProps & {
+  label: string;
+  hint?: string;
+  error?: string;
+};
+
+/** Field + TextInput ในตัวเดียว — โยน props ของ input มาได้เลย (รองรับ `{...register()}`) */
+export const FormInput = React.forwardRef<HTMLInputElement, FormInputProps>(
+  ({ label, hint, error, ...props }, ref) => (
+    <Field label={label} hint={hint} error={error}>
+      <TextInput ref={ref} {...props} />
+    </Field>
+  ),
+);
+FormInput.displayName = 'FormInput';
+
 /**
  * dropdown ที่วาดรายการเอง (แทน <select> native ที่แต่ง option ไม่ได้)
  * แผงรายการเข้าธีมสว่าง/มืด มี check ที่ตัวเลือกปัจจุบัน เปิดใน modal ได้ไม่โดนตัด

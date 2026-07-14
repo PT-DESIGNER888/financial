@@ -9,6 +9,7 @@ export const qk = {
   summary: ['dashboard', 'summary'] as const,
   debtors: ['debtors'] as const,
   debtor: (id: string) => ['debtor', id] as const,
+  loans: ['loan', 'list'] as const,
   schedule: (id: string) => ['loan', id, 'schedule'] as const,
   activities: (loanId: string) => ['activities', loanId] as const,
   financeCash: ['finance', 'cash'] as const,

@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { InstallmentSchedule, Loan } from '@/lib/types';
+import type { InstallmentSchedule, Loan, LoanListItem } from '@/lib/types';
 import { invalidateMoney, qk } from './keys';
+
+/** สัญญาทั้งหมดพร้อมยอดสรุป — หน้า "สัญญาเงินกู้" */
+export function useAllLoans() {
+  return useQuery({
+    queryKey: qk.loans,
+    queryFn: () => api<LoanListItem[]>('/loans'),
+  });
+}
 
 export interface CreateLoanInput {
   debtorId: string;

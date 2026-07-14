@@ -33,11 +33,19 @@ export class DebtorsService {
     return debtor;
   }
 
-  create(input: { name: string; phone?: string; note?: string }) {
+  create(input: {
+    name: string;
+    phone?: string;
+    facebookUrl?: string;
+    lineId?: string;
+    note?: string;
+  }) {
     return this.debtors.save(
       this.debtors.create({
         name: input.name,
         phone: input.phone ?? null,
+        facebookUrl: input.facebookUrl ?? null,
+        lineId: input.lineId ?? null,
         note: input.note ?? null,
       }),
     );
@@ -48,6 +56,10 @@ export class DebtorsService {
     input: {
       name?: string;
       phone?: string;
+      facebookUrl?: string;
+      lineId?: string;
+      relativeName?: string;
+      relativePhone?: string;
       note?: string;
       blacklisted?: boolean;
       creditNote?: string;

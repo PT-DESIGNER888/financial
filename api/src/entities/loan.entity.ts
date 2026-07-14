@@ -43,6 +43,10 @@ export class Loan {
   @Column()
   debtorId: string;
 
+  /** เลขที่สัญญา เช่น L-2569-0001 (ปี พ.ศ. + ลำดับในปีนั้น) — gen อัตโนมัติตอนเปิดยอด */
+  @Column({ type: 'varchar', nullable: true })
+  contractNumber: string | null;
+
   @Column({ type: 'varchar', default: 'ACTIVE' })
   status: LoanStatus;
 

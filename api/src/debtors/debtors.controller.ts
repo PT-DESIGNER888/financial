@@ -14,12 +14,18 @@ import { DebtorsService } from './debtors.service';
 class CreateDebtorDto {
   @IsString() @IsNotEmpty() name: string;
   @IsOptional() @IsString() phone?: string;
+  @IsOptional() @IsString() facebookUrl?: string;
+  @IsOptional() @IsString() lineId?: string;
   @IsOptional() @IsString() note?: string;
 }
 
 class UpdateDebtorDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() phone?: string;
+  @IsOptional() @IsString() facebookUrl?: string;
+  @IsOptional() @IsString() lineId?: string;
+  @IsOptional() @IsString() relativeName?: string;
+  @IsOptional() @IsString() relativePhone?: string;
   @IsOptional() @IsString() note?: string;
   @IsOptional() @IsBoolean() blacklisted?: boolean;
   @IsOptional() @IsString() creditNote?: string;

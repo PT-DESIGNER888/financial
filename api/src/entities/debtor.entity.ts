@@ -18,6 +18,21 @@ export class Debtor {
   @Column({ type: 'varchar', nullable: true })
   phone: string | null;
 
+  /** ลิงก์เฟซบุ๊ก — กดเปิดโปรไฟล์ได้เลย */
+  @Column({ type: 'varchar', nullable: true })
+  facebookUrl: string | null;
+
+  /** LINE ID หรือลิงก์ (https://line.me/ti/p/…) */
+  @Column({ type: 'varchar', nullable: true })
+  lineId: string | null;
+
+  /** ญาติ/ผู้ติดต่อสำรอง (นอกจากผู้ค้ำ) */
+  @Column({ type: 'varchar', nullable: true })
+  relativeName: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  relativePhone: string | null;
+
   @Column({ type: 'text', nullable: true })
   note: string | null;
 

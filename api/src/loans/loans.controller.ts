@@ -99,6 +99,12 @@ export class LoansController {
     return this.loans.create(dto);
   }
 
+  /** รายการสัญญาทั้งหมด พร้อมยอดสรุป (หน้า "สัญญาเงินกู้") */
+  @Get()
+  findAll() {
+    return this.loans.findAll();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.loans.findOne(id);

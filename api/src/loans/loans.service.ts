@@ -153,6 +153,95 @@ export class LoansService {
     return Promise.all(active.map((l) => this.accrue(l)));
   }
 
+  /** เลขที่สัญญาถัดไป: L-<ปี พ.ศ. ของวันเปิดยอด>-<ลำดับ 4 หลัก รันต่อปี> */
+  private async nextContractNumber(startDate: string): Promise<string> {
+    const beYear = parseInt(startDate.slice(0, 4), 10) + 543;
+    const prefix = `L-${beYear}-`;
+    const rows = await this.loans
+      .createQueryBuilder('l')
+      .select('l.contractNumber', 'cn')
+      .where('l.contractNumber LIKE :p', { p: `${prefix}%` })
+      .getRawMany<{ cn: string }>();
+    const max = rows.reduce((m, r) => {
+      const n = parseInt(r.cn.slice(prefix.length), 10);
+      return Number.isFinite(n) && n > m ? n : m;
+    }, 0);
+    return `${prefix}${String(max + 1).padStart(4, '0')}`;
+  }
+
+  /** รายการสัญญาทั้งหมด พร้อมยอดสรุปต่อสัญญา (หน้า "สัญญาเงินกู้") */
+  async findAll() {
+    const loans = await this.loans.find({
+      relations: { debtor: true, payments: true },
+      order: { createdAt: 'DESC' },
+    });
+    const accrued = await Promise.all(loans.map((l) => this.accrue(l)));
+    return accrued.map((l) => this.toListItem(l));
+  }
+
+  private toListItem(loan: Loan) {
+    const payments = loan.payments ?? [];
+    const paidTotal = round2(payments.reduce((s, p) => s + p.amount, 0));
+    const frozen = loan.deadDate != null || this.isInstallment(loan);
+    const remaining =
+      loan.status === 'CLOSED'
+        ? 0
+        : frozen
+          ? (loan.deadBalance ?? 0)
+          : round2(loan.outstandingPrincipal + loan.arrears);
+
+    const today = todayStr();
+    let overdue = false;
+    let nextDueDate: string | null = null;
+    if (loan.status === 'INSTALLMENT') {
+      const s = this.buildInstallmentSchedule(loan);
+      overdue = (s?.dueNow ?? 0) > 0;
+      nextDueDate = s?.nextDueDate ?? null;
+    } else if (loan.status === 'ACTIVE' || loan.status === 'DEAD') {
+      if (loan.status === 'ACTIVE') {
+        overdue = loan.arrears > 0;
+      } else if (loan.deadDate && loan.installmentAmount) {
+        // ยอดตาย: ค้างถ้าผ่อนมาน้อยกว่างวดที่ครบกำหนดแล้ว (ทุก 10 วันนับจากวันแปลง)
+        const cyclesDue = Math.floor(diffDays(loan.deadDate, today) / 10);
+        const paidDead = payments
+          .filter((p) => p.onDeadLoan)
+          .reduce((s, p) => s + p.amount, 0);
+        const expected = Math.min(
+          cyclesDue * loan.installmentAmount,
+          round2(paidDead + remaining),
+        );
+        overdue = remaining > 0 && paidDead < expected;
+      }
+      for (let i = 1; i <= 10; i++) {
+        const d = addDays(today, i);
+        if (this.isDueOn(loan, d)) {
+          nextDueDate = d;
+          break;
+        }
+      }
+    }
+
+    return {
+      id: loan.id,
+      contractNumber: loan.contractNumber,
+      debtorId: loan.debtorId,
+      debtorName: loan.debtor?.name ?? '',
+      status: loan.status,
+      cycle: loan.cycle,
+      interestMode: loan.interestMode,
+      isInstallment: this.isInstallment(loan),
+      interestRatePercent: loan.interestRatePercent,
+      principalOriginal: loan.principalOriginal,
+      paidTotal,
+      remaining: round2(remaining),
+      totalDue: round2(paidTotal + remaining),
+      nextDueDate,
+      overdue,
+      startDate: loan.startDate,
+      note: loan.note,
+    };
+  }
+
   async findOne(id: string): Promise<Loan> {
     const loan = await this.loans.findOne({
       where: { id },
@@ -195,6 +284,7 @@ export class LoansService {
       diffDays(startDate, yesterday) > 0 ? yesterday : startDate;
     const loan = this.loans.create({
       debtorId: input.debtorId,
+      contractNumber: await this.nextContractNumber(startDate),
       principalOriginal: input.principalOriginal,
       outstandingPrincipal:
         input.outstandingPrincipal ?? input.principalOriginal,
@@ -233,6 +323,7 @@ export class LoansService {
     const per = round2(total / count);
     const loan = this.loans.create({
       debtorId: input.debtorId,
+      contractNumber: await this.nextContractNumber(startDate),
       status: 'INSTALLMENT',
       cycle: input.cycle,
       interestMode: 'FLAT',

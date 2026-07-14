@@ -21,6 +21,10 @@ export function useDebtor(id: string) {
 export interface DebtorInput {
   name: string;
   phone?: string;
+  facebookUrl?: string;
+  lineId?: string;
+  relativeName?: string;
+  relativePhone?: string;
   note?: string;
   blacklisted?: boolean;
   creditNote?: string;

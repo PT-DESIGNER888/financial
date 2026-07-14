@@ -1,9 +1,6 @@
 'use client';
 
-import { zodResolver } from '@hookform/resolvers/zod';
 import { use, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 import { AuthGate } from '@/components/auth-gate';
 import {
   IconAdjust,
@@ -18,11 +15,13 @@ import {
 import {
   Button,
   Field,
+  FormInput,
   ModalButtons,
   Segmented,
   SelectMenu,
   TextInput,
 } from '@/components/form';
+import { NewLoanModal } from '@/components/new-loan-modal';
 import { PaymentModal } from '@/components/payment-modal';
 import { PageSkeleton } from '@/components/skeleton';
 import {
@@ -47,12 +46,10 @@ import {
 import {
   useAdjustLoan,
   useConvertDead,
-  useCreateLoan,
   useDeleteLoan,
   useEditLoan,
   useLoanAction,
   useLoanSchedule,
-  type CreateLoanInput,
 } from '@/lib/hooks/useLoans';
 import { useDeletePayment } from '@/lib/hooks/usePayments';
 import { confirmDialog } from '@/lib/confirm-store';
@@ -135,7 +132,7 @@ function DebtorView({ id }: { id: string }) {
               </span>
             )}
           </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="flex flex-wrap items-center gap-x-2 text-sm text-gray-500 dark:text-gray-400">
             {debtor.phone && (
               <a
                 href={`tel:${debtor.phone}`}
@@ -143,10 +140,34 @@ function DebtorView({ id }: { id: string }) {
               >
                 {debtor.phone}
               </a>
-            )}{' '}
-            {debtor.note ? `· ${debtor.note}` : ''}
+            )}
+            {debtor.facebookUrl && (
+              <a
+                href={debtor.facebookUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="underline decoration-gray-300 underline-offset-2 hover:text-primary dark:decoration-gray-600"
+              >
+                Facebook ↗
+              </a>
+            )}
+            {debtor.lineId && (
+              <a
+                href={
+                  debtor.lineId.startsWith('http')
+                    ? debtor.lineId
+                    : `https://line.me/ti/p/~${debtor.lineId}`
+                }
+                target="_blank"
+                rel="noreferrer"
+                className="underline decoration-gray-300 underline-offset-2 hover:text-primary dark:decoration-gray-600"
+              >
+                LINE ↗
+              </a>
+            )}
+            {debtor.note && <span>· {debtor.note}</span>}
           </p>
-          {(debtor.guarantorName || debtor.creditNote) && (
+          {(debtor.guarantorName || debtor.relativeName || debtor.creditNote) && (
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {debtor.guarantorName && (
                 <>
@@ -166,7 +187,28 @@ function DebtorView({ id }: { id: string }) {
                   )}
                 </>
               )}
-              {debtor.guarantorName && debtor.creditNote ? ' · ' : ''}
+              {debtor.guarantorName && debtor.relativeName ? ' · ' : ''}
+              {debtor.relativeName && (
+                <>
+                  ญาติ: {debtor.relativeName}
+                  {debtor.relativePhone && (
+                    <>
+                      {' '}
+                      (
+                      <a
+                        href={`tel:${debtor.relativePhone}`}
+                        className="underline decoration-gray-300 underline-offset-2 hover:text-primary dark:decoration-gray-600"
+                      >
+                        {debtor.relativePhone}
+                      </a>
+                      )
+                    </>
+                  )}
+                </>
+              )}
+              {(debtor.guarantorName || debtor.relativeName) && debtor.creditNote
+                ? ' · '
+                : ''}
               {debtor.creditNote && `เครดิต: ${debtor.creditNote}`}
             </p>
           )}
@@ -423,6 +465,7 @@ function LoanCard({
             </span>
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400">
+            {loan.contractNumber && `สัญญา ${loan.contractNumber} · `}
             เปิดยอด {thaiDate(loan.startDate)} · ต้นเดิม ฿
             {baht(loan.principalOriginal)}
             {isInstallment &&
@@ -838,6 +881,12 @@ function EditDebtorModal({
 }) {
   const [name, setName] = useState(debtor.name);
   const [phone, setPhone] = useState(debtor.phone ?? '');
+  const [facebookUrl, setFacebookUrl] = useState(debtor.facebookUrl ?? '');
+  const [lineId, setLineId] = useState(debtor.lineId ?? '');
+  const [relativeName, setRelativeName] = useState(debtor.relativeName ?? '');
+  const [relativePhone, setRelativePhone] = useState(
+    debtor.relativePhone ?? '',
+  );
   const [note, setNote] = useState(debtor.note ?? '');
   const [blacklisted, setBlacklisted] = useState(debtor.blacklisted);
   const [creditNote, setCreditNote] = useState(debtor.creditNote ?? '');
@@ -859,6 +908,10 @@ function EditDebtorModal({
       await update.mutateAsync({
         name,
         phone,
+        facebookUrl,
+        lineId,
+        relativeName,
+        relativePhone,
         note,
         blacklisted,
         creditNote,
@@ -873,12 +926,40 @@ function EditDebtorModal({
 
   return (
     <ModalShell title="แก้ข้อมูลลูกหนี้" onClose={onClose}>
-      <Field label="ชื่อ *">
-        <TextInput value={name} onChange={(e) => setName(e.target.value)} />
-      </Field>
-      <Field label="เบอร์โทร">
-        <TextInput value={phone} onChange={(e) => setPhone(e.target.value)} />
-      </Field>
+      <FormInput
+        label="ชื่อ *"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <FormInput
+        label="เบอร์โทร"
+        value={phone}
+        onChange={(e) => setPhone(e.target.value)}
+      />
+      <FormInput
+        label="ลิงก์ Facebook"
+        value={facebookUrl}
+        onChange={(e) => setFacebookUrl(e.target.value)}
+        placeholder="https://facebook.com/…"
+      />
+      <FormInput
+        label="LINE ID หรือลิงก์"
+        value={lineId}
+        onChange={(e) => setLineId(e.target.value)}
+        placeholder="เช่น mylineid หรือ https://line.me/ti/p/…"
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <FormInput
+          label="ญาติ / ผู้ติดต่อสำรอง"
+          value={relativeName}
+          onChange={(e) => setRelativeName(e.target.value)}
+        />
+        <FormInput
+          label="เบอร์ญาติ"
+          value={relativePhone}
+          onChange={(e) => setRelativePhone(e.target.value)}
+        />
+      </div>
       <label className="flex items-center gap-2 rounded-lg bg-red-50 p-2.5 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
         <input
           type="checkbox"
@@ -887,30 +968,29 @@ function EditDebtorModal({
         />
         ขึ้นบัญชีดำ (เตือนก่อนปล่อยกู้เพิ่ม)
       </label>
-      <Field label="ประวัติเครดิต / พฤติกรรมการจ่าย">
-        <TextInput
-          value={creditNote}
-          onChange={(e) => setCreditNote(e.target.value)}
-          placeholder="เช่น จ่ายตรงเวลา, ชอบเลื่อน"
-        />
-      </Field>
+      <FormInput
+        label="ประวัติเครดิต / พฤติกรรมการจ่าย"
+        value={creditNote}
+        onChange={(e) => setCreditNote(e.target.value)}
+        placeholder="เช่น จ่ายตรงเวลา, ชอบเลื่อน"
+      />
       <div className="grid grid-cols-2 gap-2">
-        <Field label="ผู้ค้ำประกัน">
-          <TextInput
-            value={guarantorName}
-            onChange={(e) => setGuarantorName(e.target.value)}
-          />
-        </Field>
-        <Field label="เบอร์ผู้ค้ำ">
-          <TextInput
-            value={guarantorPhone}
-            onChange={(e) => setGuarantorPhone(e.target.value)}
-          />
-        </Field>
+        <FormInput
+          label="ผู้ค้ำประกัน"
+          value={guarantorName}
+          onChange={(e) => setGuarantorName(e.target.value)}
+        />
+        <FormInput
+          label="เบอร์ผู้ค้ำ"
+          value={guarantorPhone}
+          onChange={(e) => setGuarantorPhone(e.target.value)}
+        />
       </div>
-      <Field label="หมายเหตุ">
-        <TextInput value={note} onChange={(e) => setNote(e.target.value)} />
-      </Field>
+      <FormInput
+        label="หมายเหตุ"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
       {error && <p className="text-sm text-red-500">{error}</p>}
       <ModalButtons onClose={onClose} onSave={save} saving={update.isPending} />
     </ModalShell>
@@ -1247,356 +1327,6 @@ function AttachmentsSection({ debtorId }: { debtorId: string }) {
         </p>
       )}
     </section>
-  );
-}
-
-const loanSchema = z
-  .object({
-    loanType: z.enum(['REVOLVING', 'INSTALLMENT']),
-    principalOriginal: z.string().min(1, 'กรอกเงินต้น'),
-    interestRatePercent: z.string().optional(),
-    cycle: z.enum(['DAILY', 'TEN_DAY']),
-    interestMode: z.enum(['FLOATING', 'FLAT']),
-    isExisting: z.boolean(),
-    outstandingPrincipal: z.string().optional(),
-    arrears: z.string().optional(),
-    totalInterest: z.string().optional(),
-    installmentCount: z.string().optional(),
-    note: z.string().optional(),
-  })
-  .superRefine((d, ctx) => {
-    if (!(parseFloat(d.principalOriginal) > 0))
-      ctx.addIssue({
-        path: ['principalOriginal'],
-        code: 'custom',
-        message: 'ต้องมากกว่า 0',
-      });
-    if (d.loanType === 'REVOLVING') {
-      if (!(parseFloat(d.interestRatePercent ?? '') > 0))
-        ctx.addIssue({
-          path: ['interestRatePercent'],
-          code: 'custom',
-          message: 'ต้องมากกว่า 0',
-        });
-    } else {
-      const c = parseInt(d.installmentCount ?? '', 10);
-      if (!(c >= 1))
-        ctx.addIssue({
-          path: ['installmentCount'],
-          code: 'custom',
-          message: 'อย่างน้อย 1 งวด',
-        });
-      const ti = parseFloat(d.totalInterest ?? '');
-      if (isNaN(ti) || ti < 0)
-        ctx.addIssue({
-          path: ['totalInterest'],
-          code: 'custom',
-          message: 'กรอกดอกรวม (0 ได้)',
-        });
-    }
-  });
-type LoanForm = z.infer<typeof loanSchema>;
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-function NewLoanModal({
-  debtorId,
-  onClose,
-  onSaved,
-}: {
-  debtorId: string;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [error, setError] = useState('');
-  const {
-    register,
-    handleSubmit,
-    watch,
-    setValue,
-    formState: { errors, isSubmitting },
-  } = useForm<LoanForm>({
-    resolver: zodResolver(loanSchema),
-    defaultValues: {
-      loanType: 'REVOLVING',
-      cycle: 'DAILY',
-      interestMode: 'FLOATING',
-      isExisting: false,
-    },
-  });
-  const isExisting = watch('isExisting');
-  const loanType = watch('loanType');
-  const cycle = watch('cycle');
-  const interestMode = watch('interestMode');
-  const isInstallment = loanType === 'INSTALLMENT';
-
-  // เลือกประเภทยอด — ตั้งรอบเริ่มต้นให้เหมาะกับแต่ละแบบ
-  const pickType = (t: 'REVOLVING' | 'INSTALLMENT') => {
-    setValue('loanType', t);
-    setValue('cycle', t === 'INSTALLMENT' ? 'TEN_DAY' : 'DAILY');
-  };
-
-  // พรีวิวยอดผ่อนสินค้า
-  const principalNum = parseFloat(watch('principalOriginal') || '') || 0;
-  const interestNum = parseFloat(watch('totalInterest') || '') || 0;
-  const countNum = parseInt(watch('installmentCount') || '', 10) || 0;
-  const installmentTotal = round2(principalNum + interestNum);
-  const perInstallment = countNum > 0 ? round2(installmentTotal / countNum) : 0;
-
-  const createLoan = useCreateLoan();
-
-  const onSubmit = async (data: LoanForm) => {
-    setError('');
-    try {
-      const input: CreateLoanInput =
-        data.loanType === 'INSTALLMENT'
-          ? {
-              debtorId,
-              type: 'INSTALLMENT',
-              principalOriginal: parseFloat(data.principalOriginal),
-              installmentTotal: round2(
-                parseFloat(data.principalOriginal) +
-                  (parseFloat(data.totalInterest || '') || 0),
-              ),
-              installmentCount: parseInt(data.installmentCount || '', 10),
-              cycle: data.cycle,
-              note: data.note || undefined,
-            }
-          : {
-              debtorId,
-              principalOriginal: parseFloat(data.principalOriginal),
-              interestRatePercent: parseFloat(data.interestRatePercent || ''),
-              cycle: data.cycle,
-              interestMode: data.interestMode,
-              outstandingPrincipal:
-                data.isExisting && data.outstandingPrincipal
-                  ? parseFloat(data.outstandingPrincipal)
-                  : undefined,
-              arrears:
-                data.isExisting && data.arrears
-                  ? parseFloat(data.arrears)
-                  : undefined,
-              note: data.note || undefined,
-            };
-      await createLoan.mutateAsync(input);
-      toast(
-        data.loanType === 'INSTALLMENT'
-          ? 'เปิดยอดผ่อนสินค้าแล้ว'
-          : 'เปิดยอดใหม่แล้ว',
-      );
-      onSaved();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ');
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center"
-      onClick={onClose}
-    >
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-md space-y-3 overflow-y-auto rounded-t-lg border border-gray-200 bg-white p-5 sm:rounded-lg dark:border-gray-800 dark:bg-gray-900"
-      >
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-          เปิดยอดใหม่
-        </h2>
-
-        {/* เลือกประเภทยอดกู้ */}
-        <Field label="ประเภทยอดกู้">
-          <Segmented
-            value={loanType}
-            onChange={pickType}
-            accent={isInstallment ? 'sky' : 'primary'}
-            options={[
-              { value: 'REVOLVING', label: 'ดอกลอย / คงที่' },
-              { value: 'INSTALLMENT', label: 'ผ่อนสินค้า', hint: 'งวดเท่ากัน' },
-            ]}
-          />
-        </Field>
-
-        <div>
-          <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">
-            เงินต้น (บาท) *
-          </label>
-          <TextInput
-            type="number"
-            inputMode="decimal"
-            align="right"
-            {...register('principalOriginal')}
-          />
-          {errors.principalOriginal && (
-            <p className="mt-1 text-sm text-red-500">
-              {errors.principalOriginal.message}
-            </p>
-          )}
-        </div>
-
-        {isInstallment ? (
-          <>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">
-                  ดอกรวมทั้งสัญญา *
-                </label>
-                <TextInput
-                  type="number"
-                  inputMode="decimal"
-                  align="right"
-                  {...register('totalInterest')}
-                />
-                {errors.totalInterest && (
-                  <p className="mt-1 text-sm text-red-500">
-                    {errors.totalInterest.message}
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">
-                  จำนวนงวด *
-                </label>
-                <TextInput
-                  type="number"
-                  inputMode="numeric"
-                  align="right"
-                  {...register('installmentCount')}
-                />
-                {errors.installmentCount && (
-                  <p className="mt-1 text-sm text-red-500">
-                    {errors.installmentCount.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <Field label="รอบผ่อน *">
-              <Segmented
-                value={cycle}
-                onChange={(v) => setValue('cycle', v)}
-                accent="sky"
-                options={[
-                  { value: 'TEN_DAY', label: 'ทุก 10 วัน' },
-                  { value: 'DAILY', label: 'ทุกวัน' },
-                ]}
-              />
-            </Field>
-
-            {installmentTotal > 0 && countNum > 0 && (
-              <div className="rounded-lg bg-sky-500/10 p-3 text-sm text-gray-700 dark:text-gray-200">
-                ผ่อนรวม{' '}
-                <b className="text-gray-900 dark:text-white">
-                  ฿{baht(installmentTotal)}
-                </b>{' '}
-                ({countNum} งวด) — งวดละ{' '}
-                <b className="text-sky-600 dark:text-sky-400">
-                  ฿{baht(perInstallment)}
-                </b>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <Field label="ดอก %/รอบ *">
-              <TextInput
-                type="number"
-                step="0.001"
-                inputMode="decimal"
-                align="right"
-                {...register('interestRatePercent')}
-              />
-              {errors.interestRatePercent && (
-                <p className="mt-1 text-sm text-red-500">
-                  {errors.interestRatePercent.message}
-                </p>
-              )}
-            </Field>
-
-            <Field label="รอบเก็บ *">
-              <Segmented
-                value={cycle}
-                onChange={(v) => setValue('cycle', v)}
-                options={[
-                  { value: 'DAILY', label: 'รายวัน' },
-                  { value: 'TEN_DAY', label: 'ราย 10 วัน' },
-                ]}
-              />
-            </Field>
-
-            <Field label="รูปแบบดอก">
-              <Segmented
-                value={interestMode}
-                onChange={(v) => setValue('interestMode', v)}
-                options={[
-                  {
-                    value: 'FLOATING',
-                    label: 'ดอกลอย',
-                    hint: 'ตัดต้นแล้วดอกลด',
-                  },
-                  {
-                    value: 'FLAT',
-                    label: 'ดอกคงที่',
-                    hint: 'คิดจากต้นเดิม',
-                  },
-                ]}
-              />
-            </Field>
-
-            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-              <input type="checkbox" {...register('isExisting')} />
-              เป็นยอดเก่าที่เดินอยู่แล้ว (กรอกยอดคงเหลือ ณ วันนี้)
-            </label>
-
-            {isExisting && (
-              <div className="grid grid-cols-2 gap-2 rounded-lg bg-amber-500/10 p-3">
-                <div>
-                  <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">
-                    ต้นคงเหลือ
-                  </label>
-                  <TextInput
-                    type="number"
-                    inputMode="decimal"
-                    align="right"
-                    {...register('outstandingPrincipal')}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">
-                    ดอกค้างสะสม
-                  </label>
-                  <TextInput
-                    type="number"
-                    inputMode="decimal"
-                    align="right"
-                    {...register('arrears')}
-                  />
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        <TextInput
-          {...register('note')}
-          placeholder="หมายเหตุ (ไม่บังคับ)"
-          className="text-sm"
-        />
-
-        {error && <p className="text-sm text-red-500">{error}</p>}
-
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={onClose} className="flex-1">
-            ยกเลิก
-          </Button>
-          <Button type="submit" disabled={isSubmitting} className="flex-1">
-            เปิดยอด
-          </Button>
-        </div>
-      </form>
-    </div>
   );
 }
 
