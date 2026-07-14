@@ -4,7 +4,7 @@ export type LoanStatus =
   | 'INSTALLMENT'
   | 'CLOSED'
   | 'BAD_DEBT';
-export type LoanCycle = 'DAILY' | 'TEN_DAY';
+export type LoanCycle = 'DAILY' | 'WEEKLY' | 'TEN_DAY' | 'MONTHLY';
 export type InterestMode = 'FLOATING' | 'FLAT';
 
 export type ActivityType =
@@ -93,6 +93,10 @@ export interface Loan {
   installmentAmount: number | null;
   installmentCount: number | null;
   installmentTotal: number | null;
+  amortized: boolean;
+  fee: number;
+  firstDueDate: string | null;
+  roundInstallments: boolean;
   note: string | null;
   payments?: Payment[];
   createdAt: string;
@@ -108,8 +112,11 @@ export interface LoanListItem {
   cycle: LoanCycle;
   interestMode: InterestMode;
   isInstallment: boolean;
+  amortized: boolean;
   interestRatePercent: number;
   principalOriginal: number;
+  outstandingPrincipal: number;
+  arrears: number;
   paidTotal: number;
   remaining: number;
   totalDue: number;
@@ -124,9 +131,34 @@ export type ScheduleRowStatus = 'PAID' | 'PARTIAL' | 'DUE' | 'PENDING';
 export interface ScheduleRow {
   n: number;
   dueDate: string;
+  /** แยกต้น/ดอกเฉพาะยอดลดต้นลดดอก */
+  principal: number | null;
+  interest: number | null;
   scheduled: number;
   paid: number;
   status: ScheduleRowStatus;
+}
+
+/** แถวแผนผ่อนจาก POST /loans/preview (ยังไม่มีสถานะจ่าย) */
+export interface PlanRow {
+  n: number;
+  dueDate: string;
+  principal: number | null;
+  interest: number | null;
+  scheduled: number;
+}
+
+export interface InstallmentPlanPreview {
+  rows: PlanRow[];
+  principalOriginal: number;
+  interestTotal: number;
+  fee: number;
+  installmentTotal: number;
+  installmentCount: number;
+  installmentAmount: number;
+  firstDueDate: string;
+  lastDueDate: string;
+  startDate: string;
 }
 
 export interface InstallmentSchedule {

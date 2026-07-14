@@ -16,7 +16,7 @@ export type LoanStatus =
   | 'INSTALLMENT'
   | 'CLOSED'
   | 'BAD_DEBT';
-export type LoanCycle = 'DAILY' | 'TEN_DAY';
+export type LoanCycle = 'DAILY' | 'WEEKLY' | 'TEN_DAY' | 'MONTHLY';
 /** FLOATING = ดอกลอย (จากต้นคงเหลือ), FLAT = ดอกคงที่ (จากต้นเดิม ไม่ลดตามตัดต้น) */
 export type InterestMode = 'FLOATING' | 'FLAT';
 
@@ -96,9 +96,25 @@ export class Loan {
   @Column({ type: 'int', nullable: true })
   installmentCount: number | null;
 
-  /** ผ่อนสินค้า: ยอดเต็มที่ต้องผ่อนทั้งสัญญา (ต้น + ดอกรวม) */
+  /** ผ่อนสินค้า: ยอดเต็มที่ต้องผ่อนทั้งสัญญา (ต้น + ดอกรวม + ค่าธรรมเนียม) */
   @Column({ ...money, nullable: true })
   installmentTotal: number | null;
+
+  /** ยอดผ่อน: ลดต้นลดดอก — ดอกคิดจากต้นคงเหลือต่องวด (false = ดอกคงที่หารเท่ากัน) */
+  @Column({ default: false })
+  amortized: boolean;
+
+  /** ค่าธรรมเนียมเพิ่มเติม (รวมเข้ายอดที่ต้องชำระ เก็บกับงวดแรก) */
+  @Column({ ...money, default: 0 })
+  fee: number;
+
+  /** วันครบกำหนดงวดแรก — null = อัตโนมัติ (วันเปิดยอด + 1 รอบ) */
+  @Column({ type: 'date', nullable: true })
+  firstDueDate: string | null;
+
+  /** ปัดยอดต่องวดเป็นบาทเต็ม (เศษไปรวมงวดสุดท้าย) */
+  @Column({ default: false })
+  roundInstallments: boolean;
 
   @Column({ type: 'text', nullable: true })
   note: string | null;

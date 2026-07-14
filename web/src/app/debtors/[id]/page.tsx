@@ -21,7 +21,7 @@ import {
   SelectMenu,
   TextInput,
 } from '@/components/form';
-import { NewLoanModal } from '@/components/new-loan-modal';
+import Link from 'next/link';
 import { PaymentModal } from '@/components/payment-modal';
 import { PageSkeleton } from '@/components/skeleton';
 import {
@@ -45,6 +45,7 @@ import {
 } from '@/lib/hooks/useDebtors';
 import {
   useAdjustLoan,
+  useAllLoans,
   useConvertDead,
   useDeleteLoan,
   useEditLoan,
@@ -79,7 +80,6 @@ export default function DebtorPage({
 function DebtorView({ id }: { id: string }) {
   const { data: debtor, error } = useDebtor(id);
   const removeDebtor = useDeleteDebtor();
-  const [addingLoan, setAddingLoan] = useState(false);
   const [editingDebtor, setEditingDebtor] = useState(false);
   const [paying, setPaying] = useState<Loan | null>(null);
   const [converting, setConverting] = useState<Loan | null>(null);
@@ -221,12 +221,17 @@ function DebtorView({ id }: { id: string }) {
           >
             <IconEdit className="size-4" />
           </button>
-          <Button onClick={() => setAddingLoan(true)}>
+          <Link
+            href={`/loans/new?debtorId=${id}`}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
+          >
             <IconPlus className="size-4" />
-            เปิดยอดใหม่
-          </Button>
+            เพิ่มยอดกู้ใหม่
+          </Link>
         </div>
       </div>
+
+      <DebtorSummaryStrip debtorId={id} />
 
       {open.map((loan) => (
         <LoanCard
@@ -243,10 +248,13 @@ function DebtorView({ id }: { id: string }) {
       {open.length === 0 && (
         <div className="rounded-lg border border-gray-200 bg-white py-8 text-center dark:border-gray-800 dark:bg-gray-900">
           <p className="text-gray-500 dark:text-gray-400">ไม่มียอดเปิดอยู่</p>
-          <Button onClick={() => setAddingLoan(true)} className="mt-3">
+          <Link
+            href={`/loans/new?debtorId=${id}`}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
+          >
             <IconPlus className="size-4" />
-            เปิดยอดใหม่
-          </Button>
+            เพิ่มยอดกู้ใหม่
+          </Link>
         </div>
       )}
 
@@ -277,13 +285,6 @@ function DebtorView({ id }: { id: string }) {
         ลบลูกหนี้รายนี้
       </button>
 
-      {addingLoan && (
-        <NewLoanModal
-          debtorId={id}
-          onClose={() => setAddingLoan(false)}
-          onSaved={() => setAddingLoan(false)}
-        />
-      )}
       {editingDebtor && (
         <EditDebtorModal
           debtor={debtor}
@@ -342,6 +343,67 @@ function DebtorView({ id }: { id: string }) {
           onSaved={() => setReasonAction(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** แถบสรุปรวมทุกสัญญาของลูกหนี้ — ใช้ข้อมูลคำนวณจาก GET /loans (ตัวเดียวกับหน้าสัญญาเงินกู้) */
+function DebtorSummaryStrip({ debtorId }: { debtorId: string }) {
+  const { data: loans } = useAllLoans();
+  if (!loans) return null;
+  const mine = loans.filter((l) => l.debtorId === debtorId);
+  const open = mine.filter(
+    (l) =>
+      l.status === 'ACTIVE' ||
+      l.status === 'DEAD' ||
+      l.status === 'INSTALLMENT',
+  );
+  if (mine.length === 0) return null;
+  const remaining = open.reduce((s, l) => s + l.remaining, 0);
+  const arrears = open.reduce((s, l) => s + l.arrears, 0);
+  const overdueCount = open.filter((l) => l.overdue).length;
+  const nextDue = open
+    .map((l) => l.nextDueDate)
+    .filter((d): d is string => !!d)
+    .sort()[0];
+
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <SummaryChip
+        label="สัญญาเปิดอยู่"
+        value={`${open.length}/${mine.length}`}
+      />
+      <SummaryChip label="ยอดคงเหลือรวม" value={`฿${baht(remaining)}`} />
+      <SummaryChip
+        label="ดอกค้างรวม"
+        value={`฿${baht(arrears)}`}
+        danger={arrears > 0 || overdueCount > 0}
+      />
+      <SummaryChip
+        label="เก็บครั้งถัดไป"
+        value={nextDue ? thaiDate(nextDue) : '—'}
+      />
+    </div>
+  );
+}
+
+function SummaryChip({
+  label,
+  value,
+  danger,
+}: {
+  label: string;
+  value: string;
+  danger?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
+      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+      <p
+        className={`font-bold ${danger ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}
+      >
+        {value}
+      </p>
     </div>
   );
 }
@@ -451,7 +513,7 @@ function LoanCard({
         <div>
           <p className="flex flex-wrap items-center gap-2 font-semibold text-gray-900 dark:text-white">
             {isInstallment
-              ? `ผ่อนสินค้า · ${loan.installmentCount} งวด (${cycleLabel[loan.cycle]})`
+              ? `${loan.amortized ? 'ผ่อนลดต้นลดดอก' : 'ผ่อนดอกคงที่'} · ${loan.installmentCount} งวด (${cycleLabel[loan.cycle]})`
               : `${cycleLabel[loan.cycle]} · ดอก ${loan.interestRatePercent}%/รอบ`}
             {!isInstallment && loan.interestMode === 'FLAT' && (
               <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400">
@@ -636,7 +698,7 @@ function LoanCard({
       )}
 
       {showSchedule && isInstallment && (
-        <ScheduleTable schedule={schedule ?? null} />
+        <ScheduleTable schedule={schedule ?? null} amortized={loan.amortized} />
       )}
 
       {showHistory && (
@@ -770,8 +832,10 @@ const scheduleRowStyle: Record<ScheduleRowStatus, { label: string; cls: string }
 
 function ScheduleTable({
   schedule,
+  amortized,
 }: {
   schedule: InstallmentSchedule | null;
+  amortized: boolean;
 }) {
   if (!schedule)
     return (
@@ -808,6 +872,12 @@ function ScheduleTable({
             <tr className="text-xs text-gray-400 dark:text-gray-500">
               <th className="py-1 pr-2 font-medium">งวด</th>
               <th className="py-1 pr-2 font-medium">กำหนด</th>
+              {amortized && (
+                <>
+                  <th className="py-1 pr-2 text-right font-medium">ต้น</th>
+                  <th className="py-1 pr-2 text-right font-medium">ดอก</th>
+                </>
+              )}
               <th className="py-1 pr-2 text-right font-medium">ต้องผ่อน</th>
               <th className="py-1 pr-2 text-right font-medium">จ่ายแล้ว</th>
               <th className="py-1 text-right font-medium">สถานะ</th>
@@ -822,6 +892,16 @@ function ScheduleTable({
                   <td className="py-1.5 pr-2 text-gray-500 dark:text-gray-400">
                     {thaiDate(r.dueDate)}
                   </td>
+                  {amortized && (
+                    <>
+                      <td className="py-1.5 pr-2 text-right">
+                        ฿{baht(r.principal)}
+                      </td>
+                      <td className="py-1.5 pr-2 text-right">
+                        ฿{baht(r.interest)}
+                      </td>
+                    </>
+                  )}
                   <td className="py-1.5 pr-2 text-right">฿{baht(r.scheduled)}</td>
                   <td className="py-1.5 pr-2 text-right text-emerald-600 dark:text-emerald-400">
                     {r.paid > 0 ? `฿${baht(r.paid)}` : '-'}
@@ -1007,7 +1087,10 @@ function EditLoanModal({
   onSaved: () => void;
 }) {
   const [rate, setRate] = useState(String(loan.interestRatePercent));
-  const [cycle, setCycle] = useState(loan.cycle);
+  // แก้เงื่อนไขได้เฉพาะยอดดอกลอย/คงที่ ซึ่งมีแค่รายวัน/10 วัน
+  const [cycle, setCycle] = useState<'DAILY' | 'TEN_DAY'>(
+    loan.cycle === 'TEN_DAY' ? 'TEN_DAY' : 'DAILY',
+  );
   const [note, setNote] = useState(loan.note ?? '');
   const [error, setError] = useState('');
   const edit = useEditLoan();

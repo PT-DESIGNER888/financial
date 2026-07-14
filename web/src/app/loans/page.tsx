@@ -3,9 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { AuthGate } from '@/components/auth-gate';
-import { Button, SelectMenu, TextInput } from '@/components/form';
+import { SelectMenu, TextInput } from '@/components/form';
 import { IconPlus } from '@/components/icons';
-import { NewLoanModal } from '@/components/new-loan-modal';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht, cycleLabel, statusLabel, thaiDate } from '@/lib/format';
 import { useAllLoans } from '@/lib/hooks/useLoans';
@@ -41,7 +40,10 @@ const statusStyle: Record<LoanStatus, string> = {
 };
 
 function interestLabel(l: LoanListItem): string {
-  if (l.isInstallment) return `ผ่อนสินค้า (${cycleLabel[l.cycle]})`;
+  if (l.isInstallment)
+    return l.amortized
+      ? `ลดต้นลดดอก ${l.interestRatePercent}%/งวด (${cycleLabel[l.cycle]})`
+      : `ผ่อนดอกคงที่ (${cycleLabel[l.cycle]})`;
   const mode = l.interestMode === 'FLAT' ? 'ดอกคงที่' : 'ดอกลอย';
   return `${mode} ${l.interestRatePercent}%/${cycleLabel[l.cycle]}`;
 }
@@ -50,7 +52,6 @@ function LoansView() {
   const { data: loans, error } = useAllLoans();
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Filter>('ALL');
-  const [creating, setCreating] = useState(false);
 
   if (error)
     return <p className="py-10 text-center text-red-600">{error.message}</p>;
@@ -93,10 +94,13 @@ function LoansView() {
             )}
           </p>
         </div>
-        <Button onClick={() => setCreating(true)}>
+        <Link
+          href="/loans/new"
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
+        >
           <IconPlus className="size-4" />
           สร้างยอดกู้
-        </Button>
+        </Link>
       </div>
 
       <div className="flex gap-2">
@@ -203,12 +207,6 @@ function LoansView() {
         </div>
       </div>
 
-      {creating && (
-        <NewLoanModal
-          onClose={() => setCreating(false)}
-          onSaved={() => setCreating(false)}
-        />
-      )}
     </div>
   );
 }
