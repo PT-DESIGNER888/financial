@@ -13,6 +13,10 @@ const notoThai = Noto_Sans_Thai({
 export const metadata: Metadata = {
   title: 'ระบบติดตามเงินกู้',
   description: 'ติดตามยอดกู้ ดอกลอย รายวัน / ราย 10 วัน',
+  icons: {
+    icon: [{ url: '/favicon.png', type: 'image/png' }],
+    apple: [{ url: '/logo-180.png', type: 'image/png' }],
+  },
 };
 
 // โหมดสว่างเป็นค่าเริ่มต้น (ใช้กลางแจ้งบ่อย) — มืดเฉพาะเมื่อผู้ใช้เคยเลือกไว้
@@ -30,7 +34,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className="min-h-full bg-gray-50 text-gray-800 dark:bg-gray-950 dark:text-gray-200">
+      <body className="min-h-full bg-[#eceef1] text-[#1a222c] dark:bg-gray-950 dark:text-gray-100">
         <QueryProvider>
           <Shell>{children}</Shell>
         </QueryProvider>

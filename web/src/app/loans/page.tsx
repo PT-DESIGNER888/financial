@@ -78,13 +78,13 @@ function LoansView() {
   const overdueCount = loans.filter((l) => l.overdue).length;
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-[1.375rem] font-bold text-slate-900 dark:text-white">
             สัญญาเงินกู้
           </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-[13px] text-slate-500 dark:text-gray-400">
             ทั้งหมด {loans.length} สัญญา · เปิดอยู่ {openCount}
             {overdueCount > 0 && (
               <span className="text-red-600 dark:text-red-400">
@@ -108,7 +108,9 @@ function LoansView() {
           <TextInput
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="🔍 ค้นหาชื่อลูกหนี้ / เลขที่สัญญา…"
+            placeholder="ค้นหาชื่อลูกหนี้ / เลขที่สัญญา…"
+            type="search"
+            aria-label="ค้นหาสัญญา"
           />
         </div>
         <div className="w-40 shrink-0">
@@ -116,11 +118,11 @@ function LoansView() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-[13px]">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50 text-xs font-semibold tracking-wider text-gray-500 uppercase dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-400">
+              <tr className="border-b border-slate-100 bg-slate-50 text-[12px] font-semibold text-slate-500 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-400">
                 <th className="px-4 py-2.5 font-semibold">เลขที่สัญญา</th>
                 <th className="px-3 py-2.5 font-semibold">ลูกหนี้</th>
                 <th className="px-3 py-2.5 text-right font-semibold">เงินต้น</th>

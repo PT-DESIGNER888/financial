@@ -11,7 +11,7 @@ import { Popover } from '@/components/popover';
 
 /** คลาสพื้นฐานของช่องกรอก — export ไว้เผื่อกรณีที่ต้องใส่เอง */
 export const inputCls =
-  'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-400 focus:border-primary focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white';
+  'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-primary focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500';
 
 /** กล่อง label + ช่องกรอก + ข้อความ hint/error */
 export function Field({
@@ -28,15 +28,21 @@ export function Field({
   return (
     <div>
       {label && (
-        <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">
+        <label className="mb-1.5 block text-[13px] font-medium text-slate-600 dark:text-gray-300">
           {label}
         </label>
       )}
       {children}
       {hint && (
-        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{hint}</p>
+        <p className="mt-1.5 text-[12px] leading-relaxed text-slate-500 dark:text-gray-500">
+          {hint}
+        </p>
       )}
-      {error && <p className="mt-1 text-sm text-red-500">{error}</p>}
+      {error && (
+        <p className="mt-1.5 text-[13px] font-medium text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -102,7 +108,7 @@ export function SelectMenu<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen(true)}
-        className={`${size === 'md' ? inputCls : 'rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-primary focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white'} flex cursor-pointer items-center justify-between gap-2 text-left ${className ?? ''}`}
+        className={`${size === 'md' ? inputCls : 'rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-primary focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white'} flex cursor-pointer items-center justify-between gap-2 text-left ${className ?? ''}`}
       >
         <span className="truncate">{current?.label ?? '—'}</span>
         <IconChevronDown
@@ -157,15 +163,16 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const buttonVariant: Record<ButtonVariant, string> = {
-  primary: 'bg-primary text-white hover:bg-primary/90 disabled:opacity-50',
+  primary:
+    'bg-primary text-white hover:brightness-95 disabled:opacity-50',
   secondary:
-    'border border-gray-300 text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800',
-  danger: 'bg-red-600 text-white hover:bg-red-700 disabled:opacity-50',
+    'border border-[#d7dce3] bg-white text-[#1a222c] hover:bg-[#f4f5f7] dark:border-gray-700 dark:bg-transparent dark:text-gray-300 dark:hover:bg-gray-800',
+  danger: 'bg-[#b33b3b] text-white hover:brightness-95 disabled:opacity-50',
 };
 
 const buttonSize: Record<ButtonSize, string> = {
-  sm: 'px-3 py-1.5 text-sm',
-  md: 'px-4 py-2.5 text-sm',
+  sm: 'min-h-9 px-3.5 py-2 text-[13px]',
+  md: 'min-h-11 px-4 py-2.5 text-[14px]',
 };
 
 /** ปุ่มกลางของทั้งแอป — variant primary/secondary/danger, size sm/md */
@@ -177,7 +184,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     <button
       ref={ref}
       type={type ?? 'button'}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold transition-colors ${buttonVariant[variant]} ${buttonSize[size]} ${block ? 'w-full' : ''} ${className ?? ''}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-xl font-semibold transition-colors ${buttonVariant[variant]} ${buttonSize[size]} ${block ? 'w-full' : ''} ${className ?? ''}`}
       {...props}
     />
   ),
@@ -243,10 +250,10 @@ export function Segmented<T extends string>({
             key={o.value}
             type="button"
             onClick={() => onChange(o.value)}
-            className={`flex-1 rounded-lg border px-3 py-2 text-center text-sm font-medium transition-colors ${
+            className={`flex-1 rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-colors ${
               active
                 ? activeCls
-                : 'border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800'
             }`}
           >
             <span className="block leading-tight">{o.label}</span>
