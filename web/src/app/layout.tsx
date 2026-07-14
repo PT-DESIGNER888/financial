@@ -13,6 +13,10 @@ const notoThai = Noto_Sans_Thai({
 export const metadata: Metadata = {
   title: 'ระบบติดตามเงินกู้',
   description: 'ติดตามยอดกู้ ดอกลอย รายวัน / ราย 10 วัน',
+  icons: {
+    icon: [{ url: '/favicon.png', type: 'image/png' }],
+    apple: [{ url: '/logo-180.png', type: 'image/png' }],
+  },
 };
 
 // โหมดสว่างเป็นค่าเริ่มต้น (ใช้กลางแจ้งบ่อย) — มืดเฉพาะเมื่อผู้ใช้เคยเลือกไว้

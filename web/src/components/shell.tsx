@@ -14,6 +14,7 @@ import {
   IconSun,
   IconUsers,
 } from '@/components/icons';
+import { BrandLogo } from '@/components/brand-logo';
 import { ConfirmHost } from '@/components/confirm-host';
 import { Toaster } from '@/components/toaster';
 import { useAuthStore } from '@/lib/auth-store';
@@ -89,9 +90,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       {/* Sidebar — desktop */}
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r border-[#d7dce3] bg-white md:flex print:hidden dark:border-gray-800 dark:bg-gray-900">
         <div className="flex items-center gap-3 px-5 pt-6 pb-5">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-primary text-lg font-bold text-white">
-            ฿
-          </span>
+          <BrandLogo size="md" />
           <div className="min-w-0">
             <p className="truncate text-[15px] font-bold text-slate-900 dark:text-white">
               ระบบเงินกู้

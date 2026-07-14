@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+import { BrandLogo } from '@/components/brand-logo';
 import { Button, Field, TextInput } from '@/components/form';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
@@ -51,9 +52,7 @@ export default function LoginPage() {
         className="relative w-full max-w-[22rem] space-y-5 rounded-2xl border border-[#d7dce3] bg-white p-7 dark:border-gray-800 dark:bg-gray-900"
       >
         <div className="flex flex-col items-center gap-3 pb-1 text-center">
-          <span className="flex size-14 items-center justify-center rounded-2xl bg-primary text-2xl font-bold text-white">
-            ฿
-          </span>
+          <BrandLogo size="xl" priority />
           <div>
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">
               ระบบติดตามเงินกู้
