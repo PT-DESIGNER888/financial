@@ -6,9 +6,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *   - payments.paymentType: ประเภทการรับชำระ (ชำระดอก / ลดต้น / ดอก+ลดต้น)
  * ยอดเก่า: ไม่มีแถวรอบดอก → ระบบ gen ต่อจาก accruedThrough อัตโนมัติ ไม่สะสมย้อนซ้ำ
  */
-export class AddLoanCyclesAndPaymentType1784300000000
-  implements MigrationInterface
-{
+export class AddLoanCyclesAndPaymentType1784300000000 implements MigrationInterface {
   name = 'AddLoanCyclesAndPaymentType1784300000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

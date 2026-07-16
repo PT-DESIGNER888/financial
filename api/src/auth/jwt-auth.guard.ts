@@ -6,7 +6,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import type { Request } from 'express';
 import { AuthService } from './auth.service';
+
+type AuthedRequest = Request & { user?: unknown };
 
 export const IS_PUBLIC = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC, true);
@@ -25,7 +28,7 @@ export class JwtAuthGuard implements CanActivate {
     ]);
     if (isPublic) return true;
 
-    const req = context.switchToHttp().getRequest();
+    const req = context.switchToHttp().getRequest<AuthedRequest>();
     const token = (req.headers.authorization ?? '').replace(/^Bearer /, '');
     if (!token) throw new UnauthorizedException();
     try {

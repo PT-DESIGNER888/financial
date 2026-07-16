@@ -5,9 +5,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * 2) loans: เพิ่มเลขที่สัญญา (L-<ปี พ.ศ.>-<ลำดับ 4 หลัก>) + backfill สัญญาเก่า
  *    เรียงตามวันสร้างภายในปีของวันเปิดยอด
  */
-export class AddContactAndContractNumber1784100000000
-  implements MigrationInterface
-{
+export class AddContactAndContractNumber1784100000000 implements MigrationInterface {
   name = 'AddContactAndContractNumber1784100000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

@@ -12,8 +12,7 @@ export class StorageService {
 
   get configured(): boolean {
     return !!(
-      this.config.get('SUPABASE_URL') &&
-      this.config.get('SUPABASE_SERVICE_KEY')
+      this.config.get('SUPABASE_URL') && this.config.get('SUPABASE_SERVICE_KEY')
     );
   }
 
@@ -47,7 +46,9 @@ export class StorageService {
     );
     if (!res.ok) {
       const body = await res.text();
-      throw new BadRequestException(`อัปโหลดไม่สำเร็จ (${res.status}): ${body}`);
+      throw new BadRequestException(
+        `อัปโหลดไม่สำเร็จ (${res.status}): ${body}`,
+      );
     }
     return {
       path,

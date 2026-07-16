@@ -8,9 +8,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * ใช้ IF NOT EXISTS/IF EXISTS เพื่อให้รันซ้ำได้ปลอดภัย
  * (migration เดิมเคยใช้ timestamp 1784200000000 ซ้ำกับ AddEmergencyContacts)
  */
-export class AddInstallmentPlanFields1784250000000
-  implements MigrationInterface
-{
+export class AddInstallmentPlanFields1784250000000 implements MigrationInterface {
   name = 'AddInstallmentPlanFields1784250000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

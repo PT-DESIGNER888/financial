@@ -59,7 +59,9 @@ class CreateLoanDto {
   arrears?: number;
 
   /** อัตราดอก — ดอกลอย/คงที่: %/รอบ, ลดต้นลดดอก: %/งวดจากต้นคงเหลือ */
-  @ValidateIf((o) => o.type !== 'INSTALLMENT' || o.amortized === true)
+  @ValidateIf(
+    (o: CreateLoanDto) => o.type !== 'INSTALLMENT' || o.amortized === true,
+  )
   @Type(() => Number)
   @IsNumber()
   @IsPositive()
@@ -72,7 +74,7 @@ class CreateLoanDto {
   interestMode?: InterestMode;
 
   /** ผ่อนเป็นงวด: จำนวนงวด */
-  @ValidateIf((o) => o.type === 'INSTALLMENT')
+  @ValidateIf((o: CreateLoanDto) => o.type === 'INSTALLMENT')
   @Type(() => Number)
   @IsInt()
   @IsPositive()

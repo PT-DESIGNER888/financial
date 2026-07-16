@@ -10,6 +10,12 @@ import * as bcrypt from 'bcryptjs';
 import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
 
+export interface JwtPayload {
+  sub: string;
+  username: string;
+  role: string;
+}
+
 @Injectable()
 export class AuthService implements OnApplicationBootstrap {
   constructor(
@@ -71,7 +77,7 @@ export class AuthService implements OnApplicationBootstrap {
 
   async refresh(refreshToken: string) {
     try {
-      const payload = await this.jwt.verifyAsync(refreshToken, {
+      const payload = await this.jwt.verifyAsync<JwtPayload>(refreshToken, {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
       });
       const user = await this.users.findOneByOrFail({
@@ -84,8 +90,8 @@ export class AuthService implements OnApplicationBootstrap {
     }
   }
 
-  verifyAccess(token: string) {
-    return this.jwt.verifyAsync(token, {
+  verifyAccess(token: string): Promise<JwtPayload> {
+    return this.jwt.verifyAsync<JwtPayload>(token, {
       secret: this.config.getOrThrow<string>('JWT_SECRET'),
     });
   }

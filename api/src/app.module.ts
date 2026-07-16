@@ -56,7 +56,8 @@ function buildDbOptions(config: ConfigService): TypeOrmModuleOptions {
   }
   return {
     type: 'better-sqlite3',
-    database: 'data/dev.sqlite',
+    // SQLITE_PATH override ไว้ให้ test ชี้ DB ชั่วคราว (เช่น :memory:)
+    database: config.get<string>('SQLITE_PATH') ?? 'data/dev.sqlite',
     entities,
     synchronize: true,
   };

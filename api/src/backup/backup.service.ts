@@ -15,16 +15,23 @@ export class BackupService {
 
   /** ส่งออกข้อมูลทั้งหมด (ยกเว้นผู้ใช้/รหัสผ่าน) เป็น JSON */
   async export() {
-    const [debtors, loans, payments, activities, cashtx, settings, attachments] =
-      await Promise.all([
-        this.ds.getRepository(Debtor).find(),
-        this.ds.getRepository(Loan).find(),
-        this.ds.getRepository(Payment).find(),
-        this.ds.getRepository(Activity).find(),
-        this.ds.getRepository(CashTx).find(),
-        this.ds.getRepository(Setting).find(),
-        this.ds.getRepository(Attachment).find(),
-      ]);
+    const [
+      debtors,
+      loans,
+      payments,
+      activities,
+      cashtx,
+      settings,
+      attachments,
+    ] = await Promise.all([
+      this.ds.getRepository(Debtor).find(),
+      this.ds.getRepository(Loan).find(),
+      this.ds.getRepository(Payment).find(),
+      this.ds.getRepository(Activity).find(),
+      this.ds.getRepository(CashTx).find(),
+      this.ds.getRepository(Setting).find(),
+      this.ds.getRepository(Attachment).find(),
+    ]);
     return {
       version: 1,
       exportedAt: new Date().toISOString(),
@@ -51,7 +58,8 @@ export class BackupService {
       await m.getRepository(Debtor).delete({});
       // ใส่แม่ก่อนลูก
       const save = async (entity: any, rows?: unknown[]) => {
-        if (rows && rows.length) await m.getRepository(entity).save(rows as any);
+        if (rows && rows.length)
+          await m.getRepository(entity).save(rows as any);
       };
       await save(Debtor, data.debtors);
       await save(Loan, data.loans);
