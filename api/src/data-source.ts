@@ -5,6 +5,7 @@ import { Attachment } from './entities/attachment.entity';
 import { CashTx } from './entities/cash-tx.entity';
 import { Debtor } from './entities/debtor.entity';
 import { Loan } from './entities/loan.entity';
+import { LoanCycle } from './entities/loan-cycle.entity';
 import { Payment } from './entities/payment.entity';
 import { Setting } from './entities/setting.entity';
 import { User } from './entities/user.entity';
@@ -17,7 +18,17 @@ import { User } from './entities/user.entity';
 export default new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL,
-  entities: [User, Debtor, Loan, Payment, Activity, CashTx, Setting, Attachment],
+  entities: [
+    User,
+    Debtor,
+    Loan,
+    LoanCycle,
+    Payment,
+    Activity,
+    CashTx,
+    Setting,
+    Attachment,
+  ],
   migrations: ['src/migrations/*.ts'],
   ssl: { rejectUnauthorized: false },
 });
