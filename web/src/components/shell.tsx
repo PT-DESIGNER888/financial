@@ -155,7 +155,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Content */}
-      <div className="flex min-h-screen flex-1 flex-col md:pl-72 print:pl-0">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col md:pl-72 print:pl-0">
         <header className="sticky top-0 z-10 border-b border-[#d7dce3] bg-white print:hidden dark:border-gray-800 dark:bg-gray-900">
           <div className="flex items-center justify-between gap-3 px-4 py-3.5 md:px-10 lg:px-12">
             <div className="min-w-0">
@@ -216,7 +216,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-[calc(6.25rem+env(safe-area-inset-bottom))] md:px-10 md:pt-10 md:pb-12 lg:px-12">
+        <main className="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 pt-6 pb-[calc(6.25rem+env(safe-area-inset-bottom))] md:px-10 md:pt-10 md:pb-12 lg:px-12">
           {children}
         </main>
       </div>

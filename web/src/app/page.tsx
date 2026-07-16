@@ -247,7 +247,18 @@ function DueTable({
         </span>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="divide-y divide-slate-100 sm:hidden dark:divide-gray-800">
+        {items.map((item) => (
+          <DueCard
+            key={item.loanId}
+            item={item}
+            onPay={() => onPay(item)}
+            paid={paid}
+          />
+        ))}
+      </div>
+
+      <div className="hidden overflow-x-auto sm:block">
         <table className="w-full min-w-[640px] text-left">
           <caption className="sr-only">รายการที่ถึงกำหนดรับเงิน</caption>
           <thead>
@@ -288,6 +299,102 @@ function DueTable({
         </table>
       </div>
     </section>
+  );
+}
+
+function DueCard({
+  item,
+  onPay,
+  paid,
+}: {
+  item: TodayItem;
+  onPay: () => void;
+  paid?: boolean;
+}) {
+  const done = item.remainingToday <= 0;
+  const frozen = item.status === 'DEAD' || item.status === 'INSTALLMENT';
+  const amount = done ? item.paidToday : item.remainingToday;
+
+  return (
+    <article className="space-y-4 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <Link
+          href={`/debtors/${item.debtorId}`}
+          className="group min-w-0 rounded-lg text-left transition-colors active:text-primary"
+        >
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="min-w-0 truncate text-[15px] font-semibold text-slate-900 group-active:text-primary dark:text-white">
+              {item.debtorName}
+            </span>
+            <IconOut className="size-4 shrink-0 stroke-[1.5] text-slate-400" />
+          </span>
+          <span className="mt-1 block text-xs text-slate-500 dark:text-gray-400">
+            {frozen ? 'ผ่อนเหลือ' : 'ต้นเหลือ'}{' '}
+            <span data-money className="tabular-nums">
+              ฿{baht(frozen ? item.deadBalance : item.outstandingPrincipal)}
+            </span>
+            {!frozen && item.arrears > 0 && (
+              <span className="text-red-600 dark:text-red-400">
+                {' '}
+                · ค้าง ฿{baht(item.arrears)}
+              </span>
+            )}
+          </span>
+        </Link>
+
+        <div className="flex shrink-0 flex-wrap justify-end gap-1">
+          <StatusBadge paid={done} />
+          {item.status === 'DEAD' && (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-gray-800 dark:text-gray-400">
+              ยอดตาย
+            </span>
+          )}
+          {item.status === 'INSTALLMENT' && (
+            <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
+              ผ่อนงวด
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 px-3.5 py-3 dark:bg-gray-800/60">
+        <div>
+          <p className="text-xs text-slate-500 dark:text-gray-400">รอบชำระ</p>
+          <p className="mt-0.5 text-sm font-medium text-slate-700 dark:text-gray-200">
+            {cycleLabel[item.cycle]}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-slate-500 dark:text-gray-400">
+            ยอดต้องรับ
+          </p>
+          <p
+            data-money
+            className={`mt-0.5 text-lg font-bold tabular-nums ${
+              paid
+                ? 'text-emerald-700 dark:text-emerald-400'
+                : 'text-slate-900 dark:text-white'
+            }`}
+          >
+            ฿{baht(amount)}
+          </p>
+          {item.paidToday > 0 && !paid && (
+            <p className="mt-0.5 text-xs font-medium text-emerald-600 tabular-nums dark:text-emerald-400">
+              จ่ายแล้ว ฿{baht(item.paidToday)}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <Button
+        onClick={onPay}
+        variant={paid ? 'secondary' : 'primary'}
+        block
+      >
+        <IconReceive className="size-[1.125rem] stroke-[1.5]" />
+        {paid ? 'รับเพิ่ม' : 'รับเงิน'}
+      </Button>
+    </article>
   );
 }
 
