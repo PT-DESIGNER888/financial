@@ -36,7 +36,7 @@ import type {
   Loan,
   ScheduleRowStatus,
 } from '@/lib/types';
-import { EditCycleModal } from './modals';
+import { EditCycleModal } from './edit-cycle-modal';
 import { ManageBtn, Stat, StatText } from './ui';
 
 const statusStyle: Record<Loan['status'], string> = {

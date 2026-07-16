@@ -18,16 +18,14 @@ import { confirmDialog } from '@/lib/confirm-store';
 import { useDebtor, useDeleteDebtor } from '@/lib/hooks/useDebtors';
 import { LoanStatus } from '@/lib/types';
 import type { Loan } from '@/lib/types';
+import { AdjustModal } from './_components/adjust-modal';
 import { AttachmentsSection } from './_components/attachments';
+import { ConvertDeadModal } from './_components/convert-dead-modal';
+import { EditDebtorModal } from './_components/edit-debtor-modal';
+import { EditLoanModal } from './_components/edit-loan-modal';
 import { facebookDisplayName, resolveContacts } from './_components/helpers';
 import { LoanCard } from './_components/loan-card';
-import {
-  AdjustModal,
-  ConvertDeadModal,
-  EditDebtorModal,
-  EditLoanModal,
-  ReasonModal,
-} from './_components/modals';
+import { ReasonModal } from './_components/reason-modal';
 import { DebtorSummaryStrip } from './_components/summary-strip';
 
 export default function DebtorPage({
