@@ -118,7 +118,7 @@ function DebtorsView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold text-slate-900 md:text-[1.75rem] dark:text-white">
             ลูกหนี้
@@ -127,7 +127,11 @@ function DebtorsView() {
             ทั้งหมด {debtors.length} คน
           </p>
         </div>
-        <Button onClick={() => setAdding(true)}>
+        <Button
+          size="sm"
+          onClick={() => setAdding(true)}
+          className="w-full sm:w-auto"
+        >
           <IconPlus className="size-4" />
           เพิ่มลูกหนี้
         </Button>

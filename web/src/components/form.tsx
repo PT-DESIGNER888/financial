@@ -173,9 +173,26 @@ const buttonVariant: Record<ButtonVariant, string> = {
 };
 
 const buttonSize: Record<ButtonSize, string> = {
-  sm: 'min-h-11 px-4 py-2.5 text-sm md:min-h-12 md:text-[15px]',
+  sm: 'min-h-11 px-4 py-2 text-sm',
   md: 'min-h-12 px-5 py-3 text-base md:min-h-[3.25rem] md:px-6 md:text-[17px]',
 };
+
+interface ButtonClassNameOptions {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  block?: boolean;
+  className?: string;
+}
+
+/** คลาสปุ่มกลางสำหรับ element อื่น เช่น Link ที่ต้องหน้าตาเหมือน Button */
+export function buttonClassName({
+  variant = 'primary',
+  size = 'md',
+  block,
+  className,
+}: ButtonClassNameOptions = {}) {
+  return `inline-flex items-center justify-center gap-1.5 rounded-xl font-semibold transition-colors ${buttonVariant[variant]} ${buttonSize[size]} ${block ? 'w-full' : ''} ${className ?? ''}`;
+}
 
 /** ปุ่มกลางของทั้งแอป — variant primary/secondary/danger, size sm/md */
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -186,7 +203,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     <button
       ref={ref}
       type={type ?? 'button'}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-xl font-semibold transition-colors ${buttonVariant[variant]} ${buttonSize[size]} ${block ? 'w-full' : ''} ${className ?? ''}`}
+      className={buttonClassName({ variant, size, block, className })}
       {...props}
     />
   ),

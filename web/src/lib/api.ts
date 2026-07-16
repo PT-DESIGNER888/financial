@@ -83,7 +83,7 @@ export async function uploadForm<T>(path: string, form: FormData): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-/** ดาวน์โหลดไฟล์จาก API (แนบ token) เช่น CSV export */
+/** ดาวน์โหลดไฟล์จาก API (แนบ token) เช่น XLSX/CSV export */
 export async function downloadFile(path: string, filename: string) {
   const { accessToken } = useAuthStore.getState();
   const res = await fetch(`${BASE}${path}`, {

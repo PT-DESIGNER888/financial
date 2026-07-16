@@ -49,6 +49,7 @@ function FinanceView() {
   const [month, setMonth] = useState(thisMonth());
   const [editingOpening, setEditingOpening] = useState(false);
   const [addingTx, setAddingTx] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const { data: cash, error } = useCashPosition();
   const { data: txs } = useCashTxList();
@@ -56,6 +57,20 @@ function FinanceView() {
   // รายงานรายเดือน — โหลดใหม่อัตโนมัติเมื่อเปลี่ยนเดือน (query key ผูกกับ month)
   const { data: report } = useMonthly(month);
   const removeTx = useDeleteCashTx();
+
+  const exportExcel = async () => {
+    setIsExporting(true);
+    try {
+      await downloadFile(
+        `/finance/export.xlsx?month=${month}`,
+        `money-report-${month}.xlsx`,
+      );
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'ดาวน์โหลด Excel ไม่สำเร็จ', 'error');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   if (error)
     return (
@@ -93,15 +108,11 @@ function FinanceView() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() =>
-              downloadFile(
-                `/finance/export.csv?month=${month}`,
-                `ledger-${month}.csv`,
-              )
-            }
+            onClick={exportExcel}
+            disabled={isExporting}
           >
             <IconDownload className="size-4" />
-            Excel
+            {isExporting ? 'กำลังสร้าง…' : 'Excel'}
           </Button>
           <Button variant="secondary" size="sm" onClick={() => window.print()}>
             <IconPrinter className="size-4" />
@@ -536,4 +547,3 @@ function Modal({
     </div>
   );
 }
-

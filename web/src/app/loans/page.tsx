@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { AuthGate } from '@/components/auth-gate';
-import { SelectMenu, TextInput } from '@/components/form';
+import { buttonClassName, SelectMenu, TextInput } from '@/components/form';
 import { IconPlus } from '@/components/icons';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht, cycleLabel, statusLabel, thaiDate } from '@/lib/format';
@@ -79,7 +79,7 @@ function LoansView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold text-slate-900 md:text-[1.75rem] dark:text-white">
             สัญญาเงินกู้
@@ -96,14 +96,17 @@ function LoansView() {
         </div>
         <Link
           href="/loans/new"
-          className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
+          className={buttonClassName({
+            size: 'sm',
+            className: 'w-full sm:w-auto',
+          })}
         >
           <IconPlus className="size-4" />
           สร้างยอดกู้
         </Link>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row">
         <div className="flex-1">
           <TextInput
             value={q}
@@ -113,13 +116,91 @@ function LoansView() {
             aria-label="ค้นหาสัญญา"
           />
         </div>
-        <div className="w-40 shrink-0">
-          <SelectMenu value={filter} onChange={setFilter} options={filterOptions} />
+        <div className="w-full shrink-0 sm:w-40">
+          <SelectMenu
+            value={filter}
+            onChange={setFilter}
+            options={filterOptions}
+          />
         </div>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">
-        <div className="overflow-x-auto">
+        <div className="divide-y divide-slate-100 sm:hidden dark:divide-gray-800">
+          {filtered.map((l) => (
+            <Link
+              key={l.id}
+              href={`/debtors/${l.debtorId}`}
+              className="block space-y-3 p-4 transition-colors active:bg-slate-50 dark:active:bg-gray-800/50"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-slate-900 dark:text-white">
+                    {l.debtorName}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-gray-400">
+                    เลขที่สัญญา {l.contractNumber ?? '—'}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusStyle[l.status]}`}
+                  >
+                    {statusLabel[l.status]}
+                  </span>
+                  {l.overdue && (
+                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/10 dark:text-red-400">
+                      ค้างชำระ
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs text-slate-500 dark:text-gray-400">
+                  คงเหลือ
+                </p>
+                <p className="text-xl font-bold text-slate-900 tabular-nums dark:text-white">
+                  ฿{baht(l.remaining)}
+                </p>
+              </div>
+
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <div>
+                  <dt className="text-xs text-slate-500 dark:text-gray-400">
+                    เงินต้น
+                  </dt>
+                  <dd className="font-medium text-slate-800 tabular-nums dark:text-gray-200">
+                    ฿{baht(l.principalOriginal)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500 dark:text-gray-400">
+                    งวดถัดไป
+                  </dt>
+                  <dd className="font-medium text-slate-800 dark:text-gray-200">
+                    {l.nextDueDate ? thaiDate(l.nextDueDate) : '—'}
+                  </dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-xs text-slate-500 dark:text-gray-400">
+                    ดอกเบี้ย
+                  </dt>
+                  <dd className="text-slate-700 dark:text-gray-300">
+                    {interestLabel(l)}
+                  </dd>
+                </div>
+              </dl>
+            </Link>
+          ))}
+          {filtered.length === 0 && (
+            <p className="py-8 text-center text-gray-500 dark:text-gray-400">
+              ไม่พบสัญญา
+            </p>
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto sm:block">
           <table className="w-full min-w-[760px] text-left text-[13px]">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50 text-[12px] font-semibold text-slate-500 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-400">

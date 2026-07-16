@@ -8,6 +8,7 @@ import {
   Post,
   Query,
   Res,
+  StreamableFile,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { Type } from 'class-transformer';
@@ -21,6 +22,7 @@ import {
   Min,
 } from 'class-validator';
 import { CashTxType } from '../common/enums';
+import { ExcelReportService } from './excel-report.service';
 import { FinanceService } from './finance.service';
 
 class OpeningDto {
@@ -39,9 +41,18 @@ class CashTxDto {
   @IsOptional() @IsString() note?: string;
 }
 
+class ExportExcelQueryDto {
+  @IsOptional()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/)
+  month?: string;
+}
+
 @Controller('finance')
 export class FinanceController {
-  constructor(private finance: FinanceService) {}
+  constructor(
+    private finance: FinanceService,
+    private excelReport: ExcelReportService,
+  ) {}
 
   @Get('cash')
   cash() {
@@ -101,5 +112,16 @@ export class FinanceController {
       `attachment; filename="ledger${month ? '-' + month : ''}.csv"`,
     );
     res.send(csv);
+  }
+
+  @Get('export.xlsx')
+  async exportExcel(@Query() query: ExportExcelQueryDto) {
+    const month = query.month ?? new Date().toISOString().slice(0, 7);
+    const report = await this.excelReport.build(month);
+    return new StreamableFile(report, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="money-report-${month}.xlsx"`,
+      length: report.length,
+    });
   }
 }
