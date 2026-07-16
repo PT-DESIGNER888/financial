@@ -3,13 +3,11 @@
 import { useState } from 'react';
 import { AuthGate } from '@/components/auth-gate';
 import {
-  IconCoins,
   IconDownload,
   IconIn,
   IconOut,
   IconPlus,
   IconPrinter,
-  IconTrash,
   IconWallet,
 } from '@/components/icons';
 import { DatePicker, MonthPicker } from '@/components/date-picker';
@@ -391,7 +389,7 @@ function OpeningModal({
   onSaved: () => void;
 }) {
   const [cash, setCash] = useState(String(current));
-  const [date, setDate] = useState('');
+  const [date] = useState('');
   const [error, setError] = useState('');
   const setOpening = useSetOpening();
 

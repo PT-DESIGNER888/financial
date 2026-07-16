@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { IconCheck, IconChevronDown } from '@/components/icons';
 import { Popover } from '@/components/popover';
 
@@ -97,17 +97,19 @@ export function SelectMenu<T extends string>({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const btnRef = useRef<HTMLButtonElement>(null);
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const current = options.find((o) => o.value === value);
 
   return (
     <>
       <button
-        ref={btnRef}
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => setOpen(true)}
+        onClick={(e) => {
+          setAnchor(e.currentTarget);
+          setOpen(true);
+        }}
         className={`${size === 'md' ? inputCls : 'min-h-10 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white'} flex cursor-pointer items-center justify-between gap-2 text-left ${className ?? ''}`}
       >
         <span className="truncate">{current?.label ?? '—'}</span>
@@ -115,9 +117,9 @@ export function SelectMenu<T extends string>({
           className={`size-5 shrink-0 text-gray-400 transition-transform dark:text-gray-500 ${open ? 'rotate-180' : ''}`}
         />
       </button>
-      {open && btnRef.current && (
+      {open && anchor && (
         <Popover
-          anchor={btnRef.current}
+          anchor={anchor}
           onClose={() => setOpen(false)}
           matchWidth={size === 'md'}
           minWidth={144}

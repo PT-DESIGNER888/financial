@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import {
   IconChart,
   IconCoins,
@@ -52,16 +52,23 @@ const menu = [
 
 const flat = menu.flatMap((g) => g.items);
 
+const subscribeTheme = (cb: () => void) => {
+  window.addEventListener('themechange', cb);
+  return () => window.removeEventListener('themechange', cb);
+};
+
 function useTheme() {
-  const [dark, setDark] = useState(false);
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains('dark'));
-  }, []);
+  // อ่านสถานะจริงจาก DOM (external store) — เลี่ยง setState ใน effect
+  const dark = useSyncExternalStore(
+    subscribeTheme,
+    () => document.documentElement.classList.contains('dark'),
+    () => false,
+  );
   const toggle = () => {
     const next = !dark;
-    setDark(next);
     document.documentElement.classList.toggle('dark', next);
     localStorage.setItem('money-theme', next ? 'dark' : 'light');
+    window.dispatchEvent(new Event('themechange'));
   };
   return { dark, toggle };
 }

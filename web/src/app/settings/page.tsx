@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { AuthGate } from '@/components/auth-gate';
@@ -46,10 +46,12 @@ function SettingsView() {
   const [sendResult, setSendResult] = useState('');
   const saving = saveConfigMutation.isPending;
 
-  // เติม targetId เดิมจาก config ครั้งแรก
-  useEffect(() => {
+  // เติม targetId เดิมจาก config ครั้งแรก (ปรับ state ตอน render เมื่อ config เปลี่ยน)
+  const [prevConfigTarget, setPrevConfigTarget] = useState(config?.targetId);
+  if (config?.targetId !== prevConfigTarget) {
+    setPrevConfigTarget(config?.targetId);
     if (config?.targetId) setTargetId((v) => v || config.targetId!);
-  }, [config?.targetId]);
+  }
 
   if (!config) return <PageSkeleton />;
 

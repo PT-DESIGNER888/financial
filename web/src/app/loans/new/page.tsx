@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { AuthGate } from '@/components/auth-gate';
 import { DatePicker } from '@/components/date-picker';
 import {
@@ -443,9 +443,19 @@ function PlanTable({
   amortized: boolean;
 }) {
   if (!plan) return null;
-  // คงเหลือ: ลดต้นลดดอกโชว์ต้นคงเหลือ (แบบตารางธนาคาร), ดอกคงที่โชว์ยอดผ่อนคงเหลือ
-  let remainPrincipal = plan.principalOriginal;
-  let remainTotal = plan.installmentTotal;
+  // คงเหลือสะสมต่องวด: ลดต้นลดดอกโชว์ต้นคงเหลือ (แบบตารางธนาคาร), ดอกคงที่โชว์ยอดผ่อนคงเหลือ
+  const remains = plan.rows.reduce<{ principal: number; total: number }[]>(
+    (acc, r, i) => {
+      const prevP = i === 0 ? plan.principalOriginal : acc[i - 1].principal;
+      const prevT = i === 0 ? plan.installmentTotal : acc[i - 1].total;
+      acc.push({
+        principal: round2(prevP - (r.principal ?? 0)),
+        total: round2(prevT - r.scheduled),
+      });
+      return acc;
+    },
+    [],
+  );
   return (
     <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
       <p className="border-b border-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-900 dark:border-gray-800 dark:text-white">
@@ -468,9 +478,7 @@ function PlanTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {plan.rows.map((r) => {
-              if (amortized) remainPrincipal = round2(remainPrincipal - (r.principal ?? 0));
-              remainTotal = round2(remainTotal - r.scheduled);
+            {plan.rows.map((r, i) => {
               return (
                 <tr key={r.n} className="text-gray-700 dark:text-gray-300">
                   <td className="px-4 py-1.5">{r.n}</td>
@@ -491,7 +499,7 @@ function PlanTable({
                     ฿{baht(r.scheduled)}
                   </td>
                   <td className="px-4 py-1.5 text-right">
-                    ฿{baht(amortized ? remainPrincipal : remainTotal)}
+                    ฿{baht(amortized ? remains[i].principal : remains[i].total)}
                   </td>
                 </tr>
               );

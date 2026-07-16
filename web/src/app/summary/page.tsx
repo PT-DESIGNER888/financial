@@ -4,7 +4,6 @@ import { AuthGate } from '@/components/auth-gate';
 import {
   IconAlert,
   IconChart,
-  IconCheck,
   IconDoc,
   IconTrendUp,
   IconWallet,

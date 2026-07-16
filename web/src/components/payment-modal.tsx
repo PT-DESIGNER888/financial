@@ -94,13 +94,20 @@ export function PaymentModal({
       debouncedDue !== interestDueNum ||
       suggesting);
 
-  // เติมอัตโนมัติเมื่อยังไม่แก้เอง
-  useEffect(() => {
-    if (!suggestion || manual || amountEmpty) return;
-    setArrearsPaid(suggestion.arrearsPaid);
-    setInterestPaid(suggestion.interestPaid);
-    setPrincipalPaid(suggestion.principalPaid);
-  }, [suggestion, manual, amountEmpty]);
+  // เติมอัตโนมัติเมื่อยังไม่แก้เอง — ปรับ state ตอน render เมื่อ dependency เปลี่ยน
+  const [prevAlloc, setPrevAlloc] = useState({ suggestion, manual, amountEmpty });
+  if (
+    prevAlloc.suggestion !== suggestion ||
+    prevAlloc.manual !== manual ||
+    prevAlloc.amountEmpty !== amountEmpty
+  ) {
+    setPrevAlloc({ suggestion, manual, amountEmpty });
+    if (suggestion && !manual && !amountEmpty) {
+      setArrearsPaid(suggestion.arrearsPaid);
+      setInterestPaid(suggestion.interestPaid);
+      setPrincipalPaid(suggestion.principalPaid);
+    }
+  }
 
   const allocated = round2(arrearsPaid + interestPaid + principalPaid);
   const remainingPrincipal = round2(

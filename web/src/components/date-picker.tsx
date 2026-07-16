@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { inputCls } from '@/components/form';
 import { IconCalendar, IconChevronDown } from '@/components/icons';
 import { Popover } from '@/components/popover';
@@ -77,7 +77,7 @@ export function DatePicker({
   onChange: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const btnRef = useRef<HTMLButtonElement>(null);
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [y0, m0] = (value || todayISO()).split('-').map(Number);
   const [view, setView] = useState({ y: y0, m: m0 }); // m = 1-12
 
@@ -97,11 +97,11 @@ export function DatePicker({
   return (
     <>
       <button
-        ref={btnRef}
         type="button"
-        onClick={() => {
+        onClick={(e) => {
           const [yy, mm] = (value || todayISO()).split('-').map(Number);
           setView({ y: yy, m: mm });
+          setAnchor(e.currentTarget);
           setOpen(true);
         }}
         className={`${inputCls} flex cursor-pointer items-center justify-between gap-2 text-left`}
@@ -109,8 +109,8 @@ export function DatePicker({
         <span>{label}</span>
         <IconCalendar className="size-4 shrink-0 text-gray-400 dark:text-gray-500" />
       </button>
-      {open && btnRef.current && (
-        <Popover anchor={btnRef.current} onClose={() => setOpen(false)}>
+      {open && anchor && (
+        <Popover anchor={anchor} onClose={() => setOpen(false)}>
           <div className="w-72 p-3">
             <div className="flex items-center justify-between">
               <NavBtn dir="prev" label="เดือนก่อนหน้า" onClick={() => shift(-1)} />
@@ -184,7 +184,7 @@ export function MonthPicker({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const btnRef = useRef<HTMLButtonElement>(null);
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [y0, m0] = value.split('-').map(Number);
   const [viewYear, setViewYear] = useState(y0);
   const now = new Date();
@@ -193,10 +193,10 @@ export function MonthPicker({
   return (
     <>
       <button
-        ref={btnRef}
         type="button"
-        onClick={() => {
+        onClick={(e) => {
           setViewYear(Number(value.slice(0, 4)));
+          setAnchor(e.currentTarget);
           setOpen(true);
         }}
         className={`flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-primary focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white ${className ?? ''}`}
@@ -204,8 +204,8 @@ export function MonthPicker({
         <IconCalendar className="size-4 text-gray-400 dark:text-gray-500" />
         {THAI_MONTHS_SHORT[m0 - 1]} {y0 + 543}
       </button>
-      {open && btnRef.current && (
-        <Popover anchor={btnRef.current} onClose={() => setOpen(false)}>
+      {open && anchor && (
+        <Popover anchor={anchor} onClose={() => setOpen(false)}>
           <div className="w-64 p-3">
             <div className="flex items-center justify-between">
               <NavBtn
