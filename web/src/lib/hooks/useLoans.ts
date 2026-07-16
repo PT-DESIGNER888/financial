@@ -5,6 +5,7 @@ import type {
   InstallmentSchedule,
   Loan,
   LoanCycle,
+  LoanCyclesInfo,
   LoanListItem,
 } from '@/lib/types';
 import { invalidateMoney, qk } from './keys';
@@ -92,9 +93,49 @@ export function useConvertDead() {
   });
 }
 
+/** รอบดอกของยอดดอกลอย/คงที่ — รอบล่าสุด + รอบที่กำลังเดิน */
+export function useLoanCycles(loanId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['loan', loanId, 'cycles'],
+    queryFn: () => api<LoanCyclesInfo>(`/loans/${loanId}/cycles`),
+    enabled: enabled && !!loanId,
+  });
+}
+
+export interface EditCycleInput {
+  dueDate?: string;
+  interestOverride?: number;
+  /** true = กลับไปใช้ดอกที่ระบบคำนวณ */
+  clearOverride?: boolean;
+}
+
+/** เลื่อนวันครบกำหนด / ตกลงเก็บดอกจริง ของรอบดอกรายรอบ */
+export function useUpdateCycle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      loanId,
+      cycleId,
+      input,
+    }: {
+      loanId: string;
+      cycleId: string;
+      input: EditCycleInput;
+    }) =>
+      api<LoanCyclesInfo>(`/loans/${loanId}/cycles/${cycleId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      invalidateMoney(qc);
+      qc.invalidateQueries({ queryKey: ['payments'] });
+    },
+  });
+}
+
 export interface EditLoanInput {
   interestRatePercent?: number;
-  cycle?: 'DAILY' | 'TEN_DAY';
+  cycle?: 'DAILY' | 'WEEKLY' | 'TEN_DAY';
   note?: string;
 }
 

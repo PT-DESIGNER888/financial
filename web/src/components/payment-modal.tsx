@@ -1,14 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ModalButtons, TextInput } from '@/components/form';
-import { baht } from '@/lib/format';
+import { ModalButtons, Segmented, TextInput } from '@/components/form';
+import { baht, thaiDate } from '@/lib/format';
 import { confirmDialog } from '@/lib/confirm-store';
 import {
   useRecordPayment,
   useSuggestAllocation,
 } from '@/lib/hooks/usePayments';
 import { toast } from '@/lib/toast-store';
+import { PaymentType } from '@/lib/types';
 
 interface Props {
   loanId: string;
@@ -26,11 +27,11 @@ function round2(n: number): number {
 }
 
 /**
- * รับเงิน (ตาม Codex ล่าสุด):
- * - กรอกยอดรับ → คำนวณค้าง/ดอก/ต้นให้อัตโนมัติ
- * - แก้ตัวเลขจัดสรรได้ + ปุ่มคำนวณใหม่
+ * รับเงิน:
+ * - เลือกประเภทก่อน: ชำระดอก (ต้นคงเดิม) / ลดเงินต้น / ดอก+ลดต้น
+ * - ดอกรอบนี้ระบบคำนวณให้ แต่แก้ยอดที่ตกลงเก็บจริงได้ (บันทึกลงรอบดอก)
+ * - กรอกยอดรับ → จัดสรรอัตโนมัติตามประเภท แก้ตัวเลขได้ + ปุ่มคำนวณใหม่
  * - จ่ายคืนทั้งหมด / ยอดเกินถามก่อนบันทึก
- * - การ์ดกว้าง ลำดับชัด: ยอดรับ → จัดสรร 3 ช่อง → บันทึก
  */
 export function PaymentModal({
   loanId,
@@ -41,6 +42,8 @@ export function PaymentModal({
   onSaved,
 }: Props) {
   const [amount, setAmount] = useState('');
+  const [paymentType, setPaymentType] = useState<PaymentType>(PaymentType.INTEREST);
+  const [interestDueStr, setInterestDueStr] = useState(''); // '' = ใช้ที่ระบบคำนวณ
   const [arrearsPaid, setArrearsPaid] = useState(0);
   const [interestPaid, setInterestPaid] = useState(0);
   const [principalPaid, setPrincipalPaid] = useState(0);
@@ -51,23 +54,45 @@ export function PaymentModal({
 
   const amountNum = parseFloat(amount) || 0;
   const amountEmpty = amount.trim() === '' || amountNum <= 0;
+  const effType: PaymentType = frozen ? PaymentType.BOTH : paymentType;
+  const interestDueNum =
+    interestDueStr.trim() === '' ? undefined : parseFloat(interestDueStr) || 0;
+  const [debouncedDue, setDebouncedDue] = useState<number | undefined>(
+    undefined,
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedAmount(amountNum), 250);
     return () => clearTimeout(t);
   }, [amountNum]);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedDue(interestDueNum), 250);
+    return () => clearTimeout(t);
+  }, [interestDueNum]);
 
-  const { data: ceiling } = useSuggestAllocation(loanId, 1e12, true);
+  const { data: ceiling } = useSuggestAllocation(
+    loanId,
+    1e12,
+    true,
+    effType,
+    debouncedDue,
+  );
   const maxReceivable = ceiling?.maxReceivable ?? 0;
   const principalBalance = ceiling?.principalBalance ?? 0;
+  const cycle = ceiling?.cycle ?? null;
 
   const { data: suggestion, isFetching: suggesting } = useSuggestAllocation(
     loanId,
     debouncedAmount,
     !amountEmpty,
+    effType,
+    debouncedDue,
   );
   const suggestionPending =
-    !amountEmpty && (debouncedAmount !== amountNum || suggesting);
+    !amountEmpty &&
+    (debouncedAmount !== amountNum ||
+      debouncedDue !== interestDueNum ||
+      suggesting);
 
   // เติมอัตโนมัติเมื่อยังไม่แก้เอง
   useEffect(() => {
@@ -91,6 +116,12 @@ export function PaymentModal({
   const applyAmount = (n: number) => {
     setAmount(String(n));
     setManual(false);
+    setError('');
+  };
+
+  const changeType = (t: PaymentType) => {
+    setPaymentType(t);
+    setManual(false); // ให้ระบบจัดสรรใหม่ตามประเภท
     setError('');
   };
 
@@ -150,10 +181,19 @@ export function PaymentModal({
 
     saveAmount = allocated;
 
+    // แก้ยอดดอกรอบนี้ไว้ → บันทึกลงรอบดอกพร้อมการรับเงิน
+    const overrideChanged =
+      !frozen &&
+      cycle &&
+      interestDueNum !== undefined &&
+      interestDueNum !== (cycle.interestOverride ?? cycle.computedInterest);
+
     try {
       await record.mutateAsync({
         loanId,
         amount: saveAmount,
+        paymentType: frozen ? undefined : paymentType,
+        interestDueOverride: overrideChanged ? interestDueNum : undefined,
         ...alloc,
         note: saveNote || undefined,
       });
@@ -211,6 +251,68 @@ export function PaymentModal({
           </p>
         </header>
 
+        {!frozen && (
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-gray-300">
+              ประเภทการชำระ
+            </label>
+            <Segmented
+              value={paymentType}
+              onChange={changeType}
+              options={[
+                {
+                  value: PaymentType.INTEREST,
+                  label: 'ชำระดอก',
+                  hint: 'เงินต้นคงเดิม',
+                },
+                { value: PaymentType.PRINCIPAL, label: 'ลดเงินต้น', hint: 'ตัดต้นอย่างเดียว' },
+                { value: PaymentType.BOTH, label: 'ดอก + ลดต้น', hint: 'ค้าง→ดอก→ต้น' },
+              ]}
+            />
+          </div>
+        )}
+
+        {!frozen && cycle && paymentType !== PaymentType.PRINCIPAL && (
+          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3.5 dark:border-gray-700 dark:bg-gray-950/60">
+            <p className="text-sm text-slate-600 dark:text-gray-300">
+              รอบนี้ครบกำหนด{' '}
+              <b className="text-slate-900 dark:text-white">
+                {thaiDate(cycle.dueDate)}
+              </b>{' '}
+              · ระบบคำนวณดอก ฿{baht(cycle.computedInterest)}
+              {cycle.interestPaid > 0 && (
+                <> · จ่ายแล้วในรอบ ฿{baht(cycle.interestPaid)}</>
+              )}
+            </p>
+            <div className="flex items-center gap-3">
+              <label className="shrink-0 text-sm font-medium text-slate-600 dark:text-gray-300">
+                เก็บดอกจริงรอบนี้
+              </label>
+              <TextInput
+                type="number"
+                inputMode="decimal"
+                align="right"
+                value={
+                  interestDueStr === '' ? String(cycle.interestDue) : interestDueStr
+                }
+                onChange={(e) => {
+                  setInterestDueStr(e.target.value);
+                  setManual(false);
+                  setError('');
+                }}
+                className="h-11 text-base tabular-nums"
+              />
+            </div>
+            {interestDueNum !== undefined &&
+              interestDueNum !== cycle.computedInterest && (
+                <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                  ตกลงเก็บ ฿{baht(interestDueNum)} แทน ฿
+                  {baht(cycle.computedInterest)} — ส่วนต่างไม่ถือเป็นยอดค้าง
+                </p>
+              )}
+          </div>
+        )}
+
         <div>
           <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-gray-300">
             จำนวนเงินที่รับ (บาท)
@@ -250,7 +352,12 @@ export function PaymentModal({
                   : 'border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800'
               }`}
             >
-              จ่ายคืนทั้งหมด ฿{baht(maxReceivable)}
+              {frozen || paymentType === PaymentType.BOTH
+                ? 'จ่ายคืนทั้งหมด'
+                : paymentType === PaymentType.INTEREST
+                  ? 'ดอก + ค้างทั้งหมด'
+                  : 'ปิดเงินต้นทั้งหมด'}{' '}
+              ฿{baht(maxReceivable)}
             </button>
           )}
           {quickAmounts
@@ -287,10 +394,17 @@ export function PaymentModal({
 
           {frozen ? (
             numField('หักยอดผ่อน', principalPaid, setPrincipalPaid)
+          ) : paymentType === PaymentType.INTEREST ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+              {numField('ค้างเก่า', arrearsPaid, setArrearsPaid)}
+              {numField('ดอกรอบนี้', interestPaid, setInterestPaid)}
+            </div>
+          ) : paymentType === PaymentType.PRINCIPAL ? (
+            numField('ตัดเงินต้น', principalPaid, setPrincipalPaid)
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
               {numField('ค้างเก่า', arrearsPaid, setArrearsPaid)}
-              {numField('ดอกวันนี้', interestPaid, setInterestPaid)}
+              {numField('ดอกรอบนี้', interestPaid, setInterestPaid)}
               {numField('ตัดเงินต้น', principalPaid, setPrincipalPaid)}
             </div>
           )}

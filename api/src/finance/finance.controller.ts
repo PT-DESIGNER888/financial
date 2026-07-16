@@ -20,6 +20,7 @@ import {
   Matches,
   Min,
 } from 'class-validator';
+import { CashTxType } from '../common/enums';
 import { FinanceService } from './finance.service';
 
 class OpeningDto {
@@ -28,7 +29,7 @@ class OpeningDto {
 }
 
 class CashTxDto {
-  @IsIn(['CAPITAL_IN', 'CAPITAL_OUT', 'INCOME', 'EXPENSE'])
+  @IsIn(Object.values(CashTxType))
   type: 'CAPITAL_IN' | 'CAPITAL_OUT' | 'INCOME' | 'EXPENSE';
 
   @Type(() => Number) @IsNumber() @IsPositive() amount: number;
@@ -83,9 +84,7 @@ export class FinanceController {
 
   @Get('monthly')
   monthly(@Query('month') month: string) {
-    return this.finance.monthly(
-      month ?? new Date().toISOString().slice(0, 7),
-    );
+    return this.finance.monthly(month ?? new Date().toISOString().slice(0, 7));
   }
 
   @Get('trend')

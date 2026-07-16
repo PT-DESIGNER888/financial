@@ -6,7 +6,10 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
-export type AttachmentKind = 'SLIP' | 'ID_CARD' | 'OTHER';
+import { AttachmentKind } from '../common/enums';
+
+// re-export ให้โค้ดเดิมที่ import จาก entity ใช้ได้ต่อ — นิยามจริงอยู่ที่ common/enums
+export { AttachmentKind } from '../common/enums';
 
 /** ไฟล์แนบของลูกหนี้ (สลิปโอน / บัตรประชาชน) — เก็บไฟล์จริงที่ Supabase Storage เก็บแค่ URL ที่นี่ */
 @Entity('attachments')

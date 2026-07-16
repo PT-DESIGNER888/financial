@@ -121,7 +121,9 @@ export class FinanceService {
   // ---- สมุดธุรกรรมรวม (ledger) ----
   async ledger(opts: { month?: string; limit?: number } = {}) {
     const loans = await this.loans.find({ relations: { debtor: true } });
-    const pays = await this.payments.find({ relations: { loan: { debtor: true } } });
+    const pays = await this.payments.find({
+      relations: { loan: { debtor: true } },
+    });
     const txs = await this.cashtx.find();
     const loanById = new Map(loans.map((l) => [l.id, l]));
 
@@ -188,7 +190,10 @@ export class FinanceService {
     );
     const cashIn = rows.reduce((s, r) => s + r.cashIn, 0);
     const cashOut = rows.reduce((s, r) => s + r.cashOut, 0);
-    const interest = pays.reduce((s, p) => s + p.interestPaid + p.arrearsPaid, 0);
+    const interest = pays.reduce(
+      (s, p) => s + p.interestPaid + p.arrearsPaid,
+      0,
+    );
     const principalBack = pays.reduce((s, p) => s + p.principalPaid, 0);
     return {
       month,
@@ -218,7 +223,11 @@ export class FinanceService {
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
       const v = byDay.get(key) ?? { collected: 0, interest: 0 };
-      out.push({ date: key, collected: round2(v.collected), interest: round2(v.interest) });
+      out.push({
+        date: key,
+        collected: round2(v.collected),
+        interest: round2(v.interest),
+      });
     }
     return out;
   }

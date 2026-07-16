@@ -6,7 +6,11 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import { PaymentType } from '../common/enums';
 import { Loan } from './loan.entity';
+
+// re-export ให้โค้ดเดิมที่ import จาก entity ใช้ได้ต่อ — นิยามจริงอยู่ที่ common/enums
+export { PaymentType } from '../common/enums';
 
 const money = {
   type: 'numeric' as const,
@@ -53,6 +57,10 @@ export class Payment {
   /** true = จ่ายเข้ายอดตาย (ลด deadBalance) */
   @Column({ default: false })
   onDeadLoan: boolean;
+
+  /** ประเภทการรับชำระที่เลือกตอนบันทึก — null = รายการเก่าก่อนมีฟีเจอร์ */
+  @Column({ type: 'varchar', nullable: true })
+  paymentType: PaymentType | null;
 
   @Column({ type: 'text', nullable: true })
   note: string | null;

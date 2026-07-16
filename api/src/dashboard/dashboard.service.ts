@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { todayStr } from '../common/date.util';
+import { LoanStatus } from '../common/enums';
 import { Loan } from '../entities/loan.entity';
 import { Payment } from '../entities/payment.entity';
 import { LoansService } from '../loans/loans.service';
@@ -19,8 +20,14 @@ export class DashboardService {
     const today = todayStr();
     await this.loansService.accrueAllActive();
     const loans = await this.loans.find({
-      where: { status: In(['ACTIVE', 'DEAD', 'INSTALLMENT']) },
-      relations: { debtor: true },
+      where: {
+        status: In([
+          LoanStatus.ACTIVE,
+          LoanStatus.DEAD,
+          LoanStatus.INSTALLMENT,
+        ]),
+      },
+      relations: { debtor: true, cycles: true },
     });
     const todayPayments = await this.payments.find({
       where: { paidDate: today, loanId: In(loans.map((l) => l.id)) },
@@ -32,19 +39,20 @@ export class DashboardService {
 
     const items = loans.map((loan) => {
       const frozen =
-        loan.status === 'DEAD' || loan.status === 'INSTALLMENT';
+        loan.status === LoanStatus.DEAD ||
+        loan.status === LoanStatus.INSTALLMENT;
       let isDueToday = this.loansService.isDueOn(loan, today);
       const dueInterest =
-        loan.status === 'ACTIVE' && isDueToday
-          ? this.loansService.interestPerCycle(loan)
+        loan.status === LoanStatus.ACTIVE && isDueToday
+          ? this.loansService.dueInterestOn(loan, today)
           : 0;
       let dueInstallment = 0;
-      if (loan.status === 'DEAD' && isDueToday) {
+      if (loan.status === LoanStatus.DEAD && isDueToday) {
         dueInstallment = Math.min(
           loan.installmentAmount ?? 0,
           loan.deadBalance ?? 0,
         );
-      } else if (loan.status === 'INSTALLMENT') {
+      } else if (loan.status === LoanStatus.INSTALLMENT) {
         // ผ่อนงวด: ยอดที่ถึงกำหนดถึงวันนี้ (รวมงวดค้างเก่า)
         const sch = this.loansService.buildInstallmentSchedule(loan, today);
         dueInstallment = sch?.dueNow ?? 0;
@@ -86,10 +94,12 @@ export class DashboardService {
     const loans = await this.loans.find();
     const pays = await this.payments.find();
 
-    const active = loans.filter((l) => l.status === 'ACTIVE');
-    const dead = loans.filter((l) => l.status === 'DEAD');
-    const installment = loans.filter((l) => l.status === 'INSTALLMENT');
-    const badDebtLoans = loans.filter((l) => l.status === 'BAD_DEBT');
+    const active = loans.filter((l) => l.status === LoanStatus.ACTIVE);
+    const dead = loans.filter((l) => l.status === LoanStatus.DEAD);
+    const installment = loans.filter(
+      (l) => l.status === LoanStatus.INSTALLMENT,
+    );
+    const badDebtLoans = loans.filter((l) => l.status === LoanStatus.BAD_DEBT);
 
     const interestCollected = pays.reduce(
       (s, p) => s + p.interestPaid + p.arrearsPaid,
@@ -129,7 +139,7 @@ export class DashboardService {
         activeLoans: active.length,
         deadLoans: dead.length,
         installmentLoans: installment.length,
-        closedLoans: loans.filter((l) => l.status === 'CLOSED').length,
+        closedLoans: loans.filter((l) => l.status === LoanStatus.CLOSED).length,
         badDebtLoans: badDebtLoans.length,
       },
     };

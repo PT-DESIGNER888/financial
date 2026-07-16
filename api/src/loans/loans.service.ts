@@ -7,7 +7,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ActivityService } from '../activity/activity.service';
 import { addDays, addMonths, diffDays, todayStr } from '../common/date.util';
+import {
+  ActivityType,
+  InterestMode,
+  LoanKind,
+  LoanStatus,
+  RevolvingCycle,
+} from '../common/enums';
 import { Loan, LoanCycle } from '../entities/loan.entity';
+import { LoanCycle as CycleRow } from '../entities/loan-cycle.entity';
+import { Payment } from '../entities/payment.entity';
 
 /** จำนวนวันต่อรอบ (MONTHLY ใช้เลขเดือนแทน — ดู dueDateAt) */
 const cycleStep: Record<Exclude<LoanCycle, 'MONTHLY'>, number> = {
@@ -18,13 +27,13 @@ const cycleStep: Record<Exclude<LoanCycle, 'MONTHLY'>, number> = {
 
 /** วันครบกำหนดงวดที่ k (k เริ่ม 1) นับจากวันครบกำหนดงวดแรก */
 function dueDateAt(firstDue: string, cycle: LoanCycle, k: number): string {
-  if (cycle === 'MONTHLY') return addMonths(firstDue, k - 1);
+  if (cycle === LoanCycle.MONTHLY) return addMonths(firstDue, k - 1);
   return addDays(firstDue, (k - 1) * cycleStep[cycle]);
 }
 
 /** วันครบกำหนดงวดแรกอัตโนมัติ = วันเปิดยอด + 1 รอบ */
 function defaultFirstDue(startDate: string, cycle: LoanCycle): string {
-  if (cycle === 'MONTHLY') return addMonths(startDate, 1);
+  if (cycle === LoanCycle.MONTHLY) return addMonths(startDate, 1);
   return addDays(startDate, cycleStep[cycle]);
 }
 
@@ -147,6 +156,7 @@ export function buildInstallmentPlan(
 export class LoansService {
   constructor(
     @InjectRepository(Loan) private loans: Repository<Loan>,
+    @InjectRepository(CycleRow) private cycleRows: Repository<CycleRow>,
     private activity: ActivityService,
   ) {}
 
@@ -154,21 +164,90 @@ export class LoansService {
    *  FLOATING = จากต้นคงเหลือ (ลดเมื่อตัดต้น), FLAT = จากต้นเดิมคงที่ */
   interestPerCycle(loan: Loan): number {
     const base =
-      loan.interestMode === 'FLAT'
+      loan.interestMode === InterestMode.FLAT
         ? loan.principalOriginal
         : loan.outstandingPrincipal;
     return Math.round((base * loan.interestRatePercent) / 100);
   }
 
-  /** วันที่ d เป็นวันครบกำหนดของยอดนี้ไหม */
+  /** ดอกของรอบนั้น = ยอดที่ตกลงเก็บจริง (override) ถ้ามี ไม่งั้นคำนวณจากต้นคงเหลือล่าสุด */
+  cycleInterest(loan: Loan, row: CycleRow): number {
+    return row.interestOverride ?? this.interestPerCycle(loan);
+  }
+
+  /** ดอกที่ต้องเก็บของวันครบกำหนด d (ใช้ยอดตกลงจริงของรอบนั้นถ้ามี) */
+  dueInterestOn(loan: Loan, d: string): number {
+    const row = loan.cycles?.find((c) => c.dueDate === d);
+    return row ? this.cycleInterest(loan, row) : this.interestPerCycle(loan);
+  }
+
+  /**
+   * สร้างแถวรอบดอกให้ครบถึงวันนี้ + รอบถัดไปอีก 1 รอบ (เฉพาะยอดดอกลอย/คงที่ ACTIVE)
+   * - ยอดเก่าที่ยังไม่มีแถว: ต่อจากสูตรเดิม (startDate + k×รอบ) โดยไม่สะสมย้อนซ้ำ
+   *   (แถวที่วันครบกำหนด ≤ accruedThrough ถือว่าคิดเข้ายอดค้างแบบเดิมไปแล้ว)
+   * - แถวใหม่ต่อจาก "วันครบกำหนดล่าสุด" เสมอ — เลื่อนวันแล้วรอบถัดๆ ไปขยับตาม
+   */
+  async ensureCycles(loan: Loan): Promise<CycleRow[]> {
+    if (loan.status !== LoanStatus.ACTIVE || loan.cycle === LoanCycle.MONTHLY) {
+      return loan.cycles ?? [];
+    }
+    const step = cycleStep[loan.cycle];
+    const today = todayStr();
+    let rows =
+      loan.cycles ??
+      (await this.cycleRows.find({
+        where: { loanId: loan.id },
+        order: { dueDate: 'ASC' },
+      }));
+    rows = [...rows].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+    let anchor: string;
+    if (rows.length > 0) {
+      anchor = rows[rows.length - 1].dueDate;
+    } else {
+      // seed จากสูตรเดิม: วันครบกำหนดล่าสุดที่ ≤ accruedThrough
+      const past = Math.max(0, diffDays(loan.startDate, loan.accruedThrough));
+      anchor = addDays(loan.startDate, Math.floor(past / step) * step);
+    }
+
+    // เติมแถวจนวันครบกำหนดล่าสุดเลยวันนี้ไป 1 รอบ
+    const fresh: CycleRow[] = [];
+    let last = anchor;
+    while (diffDays(last, today) >= 0) {
+      last = addDays(last, step);
+      fresh.push(
+        this.cycleRows.create({
+          loanId: loan.id,
+          dueDate: last,
+          interestOverride: null,
+          // รอบที่ผ่านมาก่อนขึ้นระบบรอบดอก — เคยคิดเข้ายอดค้างแบบเดิมไปแล้ว
+          accrued: diffDays(last, loan.accruedThrough) >= 0,
+          accruedAmount: null,
+        }),
+      );
+    }
+    if (fresh.length > 0) {
+      await this.cycleRows.save(fresh);
+      rows = [...rows, ...fresh];
+    }
+    loan.cycles = rows;
+    return rows;
+  }
+
+  /** วันที่ d เป็นวันครบกำหนดของยอดนี้ไหม
+   *  ยอด ACTIVE ดูจากแถวรอบดอก (ถ้าโหลดมาแล้ว) — เลื่อนวันแล้วระบบยึดวันใหม่ */
   isDueOn(loan: Loan, d: string): boolean {
-    if (loan.status === 'CLOSED' || loan.status === 'BAD_DEBT') return false;
-    if (loan.status === 'DEAD') {
+    if (
+      loan.status === LoanStatus.CLOSED ||
+      loan.status === LoanStatus.BAD_DEBT
+    )
+      return false;
+    if (loan.status === LoanStatus.DEAD) {
       if (!loan.deadDate) return false;
       const diff = diffDays(loan.deadDate, d);
       return diff > 0 && diff % 10 === 0;
     }
-    if (loan.status === 'INSTALLMENT') {
+    if (loan.status === LoanStatus.INSTALLMENT) {
       const n = loan.installmentCount ?? 0;
       const firstDue =
         loan.firstDueDate ?? defaultFirstDue(loan.startDate, loan.cycle);
@@ -179,9 +258,49 @@ export class LoansService {
       }
       return false;
     }
+    if (loan.cycles) return loan.cycles.some((c) => c.dueDate === d);
+    // fallback (ยังไม่โหลดแถวรอบดอก): สูตรเดิมตามรอบเก็บ
     const diff = diffDays(loan.startDate, d);
     if (diff <= 0) return false;
-    return loan.cycle === 'DAILY' ? true : diff % 10 === 0;
+    if (loan.cycle === LoanCycle.MONTHLY) return false;
+    return diff % cycleStep[loan.cycle] === 0;
+  }
+
+  /**
+   * รอบดอกที่กำลังเดินอยู่ (แถวแรกที่ยังไม่สะสมและครบกำหนด ≥ วันนี้)
+   * พร้อมยอดดอกรอบนี้ และดอกที่จ่ายมาแล้วภายในรอบ (ช่วงหลังรอบก่อนถึงวันครบกำหนด)
+   */
+  currentCycleInfo(loan: Loan, asOf: string = todayStr()) {
+    if (loan.status !== LoanStatus.ACTIVE || !loan.cycles?.length) return null;
+    const rows = [...loan.cycles].sort((a, b) =>
+      a.dueDate.localeCompare(b.dueDate),
+    );
+    const idx = rows.findIndex(
+      (r) => !r.accrued && diffDays(r.dueDate, asOf) <= 0,
+    );
+    if (idx === -1) return null;
+    const row = rows[idx];
+    // รอบแรกนับรวมวันเปิดยอดด้วย (window = หลังรอบก่อน ถึงวันครบกำหนด)
+    const windowStart =
+      idx > 0 ? rows[idx - 1].dueDate : addDays(loan.startDate, -1);
+    const interestDue = this.cycleInterest(loan, row);
+    const interestPaid = (loan.payments ?? [])
+      .filter(
+        (p) =>
+          !p.onDeadLoan &&
+          diffDays(windowStart, p.paidDate) > 0 &&
+          diffDays(p.paidDate, row.dueDate) >= 0,
+      )
+      .reduce((s, p) => s + p.interestPaid, 0);
+    return {
+      cycleId: row.id,
+      dueDate: row.dueDate,
+      computedInterest: this.interestPerCycle(loan),
+      interestOverride: row.interestOverride,
+      interestDue,
+      interestPaid: round2(interestPaid),
+      interestRemaining: Math.max(0, round2(interestDue - interestPaid)),
+    };
   }
 
   /** ยอดผ่อนงวดใช่ไหม (ตรวจจาก installmentCount ที่ตั้งไว้ตอนเปิดยอด — คงอยู่แม้ปิด) */
@@ -271,29 +390,165 @@ export class LoansService {
   async getSchedule(id: string) {
     const loan = await this.findOne(id);
     const schedule = this.buildInstallmentSchedule(loan);
-    if (!schedule)
-      throw new BadRequestException('ยอดนี้ไม่ใช่ยอดผ่อนงวด');
+    if (!schedule) throw new BadRequestException('ยอดนี้ไม่ใช่ยอดผ่อนงวด');
     return schedule;
   }
 
+  /** รอบดอกของยอดดอกลอย/คงที่: รอบล่าสุดที่ผ่านมา + รอบที่กำลังเดิน/อนาคต */
+  async getCycles(id: string) {
+    const loan = await this.findOne(id); // accrue + gen รอบให้ครบก่อน
+    if (this.isInstallment(loan) || loan.deadDate)
+      throw new BadRequestException('ยอดนี้ไม่มีรอบดอก (ผ่อนงวด/ยอดตาย)');
+    const rows = [...(loan.cycles ?? [])].sort((a, b) =>
+      a.dueDate.localeCompare(b.dueDate),
+    );
+    const recentAccrued = rows.filter((r) => r.accrued).slice(-8);
+    const pendingRows = rows.filter((r) => !r.accrued);
+    return {
+      current: this.currentCycleInfo(loan),
+      rows: [...recentAccrued, ...pendingRows].map((r) => ({
+        id: r.id,
+        dueDate: r.dueDate,
+        interest: this.cycleInterest(loan, r),
+        computedInterest: this.interestPerCycle(loan),
+        interestOverride: r.interestOverride,
+        accrued: r.accrued,
+        accruedAmount: r.accruedAmount,
+      })),
+    };
+  }
+
+  /** แก้รอบดอกรายรอบ: เลื่อนวันครบกำหนด / ตกลงเก็บดอกจริง (override ที่ระบบคำนวณ) */
+  async updateCycle(
+    loanId: string,
+    cycleId: string,
+    input: { dueDate?: string; interestOverride?: number | null },
+  ) {
+    const loan = await this.findOne(loanId);
+    const rows = [...(loan.cycles ?? [])].sort((a, b) =>
+      a.dueDate.localeCompare(b.dueDate),
+    );
+    const idx = rows.findIndex((r) => r.id === cycleId);
+    if (idx === -1) throw new NotFoundException('ไม่พบรอบดอก');
+    const row = rows[idx];
+    if (row.accrued)
+      throw new BadRequestException(
+        'รอบนี้สะสมเข้ายอดค้างไปแล้ว — แก้ที่ยอดค้างด้วย "ปรับยอด" แทน',
+      );
+
+    const before = {
+      dueDate: row.dueDate,
+      interestOverride: row.interestOverride,
+    };
+    const patch: Partial<CycleRow> = {};
+    if (input.dueDate !== undefined && input.dueDate !== row.dueDate) {
+      if (diffDays(loan.accruedThrough, input.dueDate) <= 0)
+        throw new BadRequestException('เลื่อนวันย้อนหลังไม่ได้');
+      const prev = rows[idx - 1];
+      if (prev && diffDays(prev.dueDate, input.dueDate) <= 0)
+        throw new BadRequestException(
+          `ต้องอยู่หลังรอบก่อนหน้า (${prev.dueDate})`,
+        );
+      const next = rows[idx + 1];
+      if (next && diffDays(input.dueDate, next.dueDate) <= 0)
+        throw new BadRequestException(`ต้องอยู่ก่อนรอบถัดไป (${next.dueDate})`);
+      patch.dueDate = input.dueDate;
+    }
+    if (input.interestOverride !== undefined) {
+      if (input.interestOverride !== null && input.interestOverride < 0)
+        throw new BadRequestException('ยอดดอกต้องไม่ติดลบ');
+      patch.interestOverride =
+        input.interestOverride === null ? null : round2(input.interestOverride);
+    }
+    if (Object.keys(patch).length > 0) {
+      await this.cycleRows.update(cycleId, patch);
+      await this.activity.log({
+        type: ActivityType.EDIT_CYCLE,
+        loanId,
+        debtorId: loan.debtorId,
+        debtorName: loan.debtor?.name ?? null,
+        message: [
+          patch.dueDate
+            ? `เลื่อนวันครบกำหนด ${before.dueDate} → ${patch.dueDate}`
+            : '',
+          patch.interestOverride !== undefined
+            ? patch.interestOverride === null
+              ? 'กลับไปใช้ดอกที่ระบบคำนวณ'
+              : `ตกลงเก็บดอกรอบนี้ ฿${patch.interestOverride}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        meta: { before, after: { ...before, ...patch } },
+      });
+    }
+    return this.getCycles(loanId);
+  }
+
   /**
-   * สะสมดอกที่ถึงกำหนดแล้วยังไม่จ่ายเข้ายอดค้าง ถึง "เมื่อวาน"
-   * (ดอกของวันนี้แสดงแยกเป็น "ดอกวันนี้" จนกว่าจะข้ามวัน)
+   * สะสมดอกของรอบที่เลยวันครบกำหนดแล้ว (ถึง "เมื่อวาน") เข้ายอดค้าง
+   * โดยหักดอกที่จ่ายมาแล้วภายในรอบนั้นออกก่อน — จ่ายดอกครบในรอบ = ไม่มีค้าง
+   * (ดอกของรอบที่ครบกำหนดวันนี้แสดงแยกเป็น "ดอกวันนี้" จนกว่าจะข้ามวัน)
    * ใช้ update() เจาะจงฟิลด์ — ห้าม save ทั้ง entity เพราะ relation ที่โหลดค้าง
    * อาจทำให้ TypeORM เขียนทับ FK ของ payments
    */
   async accrue(loan: Loan): Promise<Loan> {
-    if (loan.status !== 'ACTIVE') return loan;
+    if (loan.status !== LoanStatus.ACTIVE) return loan;
+    const rows = await this.ensureCycles(loan);
     const yesterday = addDays(todayStr(), -1);
-    if (diffDays(loan.accruedThrough, yesterday) <= 0) return loan;
-
-    let d = addDays(loan.accruedThrough, 1);
-    let added = 0;
-    while (diffDays(d, yesterday) >= 0) {
-      if (this.isDueOn(loan, d)) added += this.interestPerCycle(loan);
-      d = addDays(d, 1);
+    const sorted = [...rows].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+    // แถวเก่าที่วันครบกำหนด ≤ accruedThrough (เช่น หลังเปิดยอดคืน) — ปิดทิ้ง ไม่คิดย้อน
+    const stale = sorted.filter(
+      (r) => !r.accrued && diffDays(r.dueDate, loan.accruedThrough) >= 0,
+    );
+    for (const row of stale) {
+      row.accrued = true;
+      await this.cycleRows.update(row.id, { accrued: true });
     }
-    loan.accruedThrough = yesterday;
+    const pending = sorted.filter(
+      (r) => !r.accrued && diffDays(r.dueDate, yesterday) >= 0,
+    );
+    if (pending.length === 0) {
+      if (diffDays(loan.accruedThrough, yesterday) > 0) {
+        loan.accruedThrough = yesterday;
+        await this.loans.update(loan.id, { accruedThrough: yesterday });
+      }
+      return loan;
+    }
+
+    const payments =
+      loan.payments ??
+      (await this.loans.manager.find(Payment, {
+        where: { loanId: loan.id },
+      }));
+
+    let added = 0;
+    for (const row of pending) {
+      const idx = sorted.indexOf(row);
+      const windowStart =
+        idx > 0 ? sorted[idx - 1].dueDate : addDays(loan.startDate, -1);
+      const due = this.cycleInterest(loan, row);
+      const paidInCycle = payments
+        .filter(
+          (p) =>
+            !p.onDeadLoan &&
+            diffDays(windowStart, p.paidDate) > 0 &&
+            diffDays(p.paidDate, row.dueDate) >= 0,
+        )
+        .reduce((s, p) => s + p.interestPaid, 0);
+      const unpaid = Math.max(0, round2(due - paidInCycle));
+      row.accrued = true;
+      row.accruedAmount = unpaid;
+      added = round2(added + unpaid);
+      await this.cycleRows.update(row.id, {
+        accrued: true,
+        accruedAmount: unpaid,
+      });
+    }
+    loan.accruedThrough =
+      diffDays(loan.accruedThrough, yesterday) > 0
+        ? yesterday
+        : loan.accruedThrough;
     loan.arrears = round2(loan.arrears + added);
     await this.loans.update(loan.id, {
       accruedThrough: loan.accruedThrough,
@@ -304,8 +559,8 @@ export class LoansService {
 
   async accrueAllActive(): Promise<Loan[]> {
     const active = await this.loans.find({
-      where: { status: 'ACTIVE' },
-      relations: { debtor: true },
+      where: { status: LoanStatus.ACTIVE },
+      relations: { debtor: true, payments: true, cycles: true },
     });
     return Promise.all(active.map((l) => this.accrue(l)));
   }
@@ -329,7 +584,7 @@ export class LoansService {
   /** รายการสัญญาทั้งหมด พร้อมยอดสรุปต่อสัญญา (หน้า "สัญญาเงินกู้") */
   async findAll() {
     const loans = await this.loans.find({
-      relations: { debtor: true, payments: true },
+      relations: { debtor: true, payments: true, cycles: true },
       order: { createdAt: 'DESC' },
     });
     const accrued = await Promise.all(loans.map((l) => this.accrue(l)));
@@ -341,7 +596,7 @@ export class LoansService {
     const paidTotal = round2(payments.reduce((s, p) => s + p.amount, 0));
     const frozen = loan.deadDate != null || this.isInstallment(loan);
     const remaining =
-      loan.status === 'CLOSED'
+      loan.status === LoanStatus.CLOSED
         ? 0
         : frozen
           ? (loan.deadBalance ?? 0)
@@ -350,12 +605,15 @@ export class LoansService {
     const today = todayStr();
     let overdue = false;
     let nextDueDate: string | null = null;
-    if (loan.status === 'INSTALLMENT') {
+    if (loan.status === LoanStatus.INSTALLMENT) {
       const s = this.buildInstallmentSchedule(loan);
       overdue = (s?.dueNow ?? 0) > 0;
       nextDueDate = s?.nextDueDate ?? null;
-    } else if (loan.status === 'ACTIVE' || loan.status === 'DEAD') {
-      if (loan.status === 'ACTIVE') {
+    } else if (
+      loan.status === LoanStatus.ACTIVE ||
+      loan.status === LoanStatus.DEAD
+    ) {
+      if (loan.status === LoanStatus.ACTIVE) {
         overdue = loan.arrears > 0;
       } else if (loan.deadDate && loan.installmentAmount) {
         // ยอดตาย: ค้างถ้าผ่อนมาน้อยกว่างวดที่ครบกำหนดแล้ว (ทุก 10 วันนับจากวันแปลง)
@@ -369,11 +627,20 @@ export class LoansService {
         );
         overdue = remaining > 0 && paidDead < expected;
       }
-      for (let i = 1; i <= 10; i++) {
-        const d = addDays(today, i);
-        if (this.isDueOn(loan, d)) {
-          nextDueDate = d;
-          break;
+      if (loan.status === LoanStatus.ACTIVE && loan.cycles?.length) {
+        // รอบดอกถัดไปจากแถวจริง (รวมวันที่ถูกเลื่อน)
+        nextDueDate =
+          [...loan.cycles]
+            .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+            .find((c) => !c.accrued && diffDays(c.dueDate, today) <= 0)
+            ?.dueDate ?? null;
+      } else {
+        for (let i = 1; i <= 10; i++) {
+          const d = addDays(today, i);
+          if (this.isDueOn(loan, d)) {
+            nextDueDate = d;
+            break;
+          }
         }
       }
     }
@@ -405,8 +672,11 @@ export class LoansService {
   async findOne(id: string): Promise<Loan> {
     const loan = await this.loans.findOne({
       where: { id },
-      relations: { debtor: true, payments: true },
-      order: { payments: { paidDate: 'DESC', createdAt: 'DESC' } },
+      relations: { debtor: true, payments: true, cycles: true },
+      order: {
+        payments: { paidDate: 'DESC', createdAt: 'DESC' },
+        cycles: { dueDate: 'ASC' },
+      },
     });
     if (!loan) throw new NotFoundException('ไม่พบยอดกู้');
     return this.accrue(loan);
@@ -414,13 +684,13 @@ export class LoansService {
 
   async create(input: {
     debtorId: string;
-    type?: 'REVOLVING' | 'INSTALLMENT';
+    type?: LoanKind;
     principalOriginal: number;
     outstandingPrincipal?: number;
     arrears?: number;
     interestRatePercent?: number;
     cycle: LoanCycle;
-    interestMode?: 'FLOATING' | 'FLAT';
+    interestMode?: InterestMode;
     installmentCount?: number;
     totalInterest?: number;
     installmentTotal?: number;
@@ -432,12 +702,16 @@ export class LoansService {
     note?: string;
   }): Promise<Loan> {
     // ยอดผ่อนงวด: กำหนดยอดเต็ม (ต้น+ดอกรวม) แล้วหารเป็น N งวดเท่ากันตั้งแต่ต้น
-    if (input.type === 'INSTALLMENT') {
+    if (input.type === LoanKind.INSTALLMENT) {
       return this.createInstallment(input);
     }
-    if (input.cycle !== 'DAILY' && input.cycle !== 'TEN_DAY')
+    if (
+      input.cycle !== LoanCycle.DAILY &&
+      input.cycle !== LoanCycle.WEEKLY &&
+      input.cycle !== LoanCycle.TEN_DAY
+    )
       throw new BadRequestException(
-        'ยอดดอกลอย/คงที่รองรับรอบรายวันหรือ 10 วันเท่านั้น',
+        'ยอดดอกลอย/คงที่รองรับรอบรายวัน ทุก 7 วัน หรือทุก 10 วัน',
       );
     if (!input.interestRatePercent || input.interestRatePercent <= 0)
       throw new BadRequestException('อัตราดอกต้องมากกว่า 0');
@@ -460,15 +734,18 @@ export class LoansService {
       arrears: input.arrears ?? 0,
       interestRatePercent: input.interestRatePercent,
       cycle: input.cycle,
-      interestMode: input.interestMode ?? 'FLOATING',
+      interestMode: input.interestMode ?? InterestMode.FLOATING,
       startDate,
       accruedThrough,
-      status: 'ACTIVE',
+      status: LoanStatus.ACTIVE,
       note: input.note ?? null,
       // ยอดเก่า (legacy) ปล่อยไปก่อนขึ้นระบบ ไม่หักเงินสดในมือซ้ำ
       fromCapital: !isLegacy,
     });
-    return this.loans.save(loan);
+    const saved = await this.loans.save(loan);
+    // สร้างรอบดอกล่วงหน้า (วันครบกำหนดรอบแรก = วันเปิดยอด + 1 รอบ)
+    await this.ensureCycles(saved);
+    return saved;
   }
 
   /** ตรวจ + สร้างแผนผ่อนจาก input (ใช้ทั้ง preview และเปิดยอดจริง) */
@@ -552,9 +829,9 @@ export class LoansService {
     const loan = this.loans.create({
       debtorId: input.debtorId,
       contractNumber: await this.nextContractNumber(startDate),
-      status: 'INSTALLMENT',
+      status: LoanStatus.INSTALLMENT,
       cycle: input.cycle,
-      interestMode: 'FLAT',
+      interestMode: InterestMode.FLAT,
       amortized: input.amortized ?? false,
       principalOriginal: plan.principalOriginal,
       outstandingPrincipal: plan.principalOriginal,
@@ -580,11 +857,11 @@ export class LoansService {
   /** แปลงเป็นยอดตาย: หยุดดอก ตรึงยอด (ต้น+ค้าง) ตกลงงวดผ่อน/10วัน */
   async convertToDead(id: string, installmentAmount: number): Promise<Loan> {
     const loan = await this.findOne(id);
-    if (loan.status !== 'ACTIVE')
+    if (loan.status !== LoanStatus.ACTIVE)
       throw new BadRequestException('แปลงได้เฉพาะยอดปกติ');
     if (installmentAmount <= 0)
       throw new BadRequestException('งวดผ่อนต้องมากกว่า 0');
-    loan.status = 'DEAD';
+    loan.status = LoanStatus.DEAD;
     loan.deadDate = todayStr();
     loan.deadBalance = round2(loan.outstandingPrincipal + loan.arrears);
     loan.installmentAmount = installmentAmount;
@@ -595,7 +872,7 @@ export class LoansService {
       installmentAmount: loan.installmentAmount,
     });
     await this.activity.log({
-      type: 'CONVERT_DEAD',
+      type: ActivityType.CONVERT_DEAD,
       loanId: loan.id,
       debtorId: loan.debtorId,
       debtorName: loan.debtor?.name ?? null,
@@ -608,7 +885,7 @@ export class LoansService {
   /** อัปเดตยอดเงินหลังรับชำระ/ลบรายการ แล้วปิด-เปิดยอดตามสถานะจริง */
   async applyBalances(loan: Loan): Promise<Loan> {
     // หนี้สูญ: ตรึงยอดไว้เป็นผลขาดทุน ไม่ auto ปิด/เปิดตามยอด
-    if (loan.status === 'BAD_DEBT') {
+    if (loan.status === LoanStatus.BAD_DEBT) {
       await this.loans.update(loan.id, {
         outstandingPrincipal: loan.outstandingPrincipal,
         arrears: loan.arrears,
@@ -622,10 +899,10 @@ export class LoansService {
       ? (loan.deadBalance ?? 0) <= 0
       : loan.outstandingPrincipal <= 0 && loan.arrears <= 0;
 
-    if (settled && loan.status !== 'CLOSED') {
-      loan.status = 'CLOSED';
+    if (settled && loan.status !== LoanStatus.CLOSED) {
+      loan.status = LoanStatus.CLOSED;
       loan.closedAt = todayStr();
-    } else if (!settled && loan.status === 'CLOSED') {
+    } else if (!settled && loan.status === LoanStatus.CLOSED) {
       // ลบรายการจ่ายแล้วยอดกลับมามี — เปิดยอดคืน
       loan.status = this.isInstallment(loan)
         ? 'INSTALLMENT'
@@ -650,7 +927,7 @@ export class LoansService {
     id: string,
     input: {
       interestRatePercent?: number;
-      cycle?: 'DAILY' | 'TEN_DAY';
+      cycle?: RevolvingCycle;
       note?: string | null;
     },
   ): Promise<Loan> {
@@ -669,8 +946,12 @@ export class LoansService {
     if (input.cycle !== undefined) patch.cycle = input.cycle;
     if (input.note !== undefined) patch.note = input.note;
     await this.loans.update(id, patch);
+    // เปลี่ยนรอบเก็บ: ลบรอบดอกที่ยังไม่สะสม แล้วให้ gen ใหม่ตามรอบใหม่
+    if (input.cycle !== undefined && input.cycle !== before.cycle) {
+      await this.cycleRows.delete({ loanId: id, accrued: false });
+    }
     await this.activity.log({
-      type: 'EDIT_LOAN',
+      type: ActivityType.EDIT_LOAN,
       loanId: id,
       debtorId: loan.debtorId,
       debtorName: loan.debtor?.name ?? null,
@@ -698,7 +979,10 @@ export class LoansService {
       arrears: loan.arrears,
       deadBalance: loan.deadBalance,
     };
-    if (loan.status === 'DEAD' || loan.status === 'INSTALLMENT') {
+    if (
+      loan.status === LoanStatus.DEAD ||
+      loan.status === LoanStatus.INSTALLMENT
+    ) {
       if (input.deadBalance === undefined)
         throw new BadRequestException('ยอดตาย/ผ่อนงวดให้ปรับ deadBalance');
       if (input.deadBalance < 0)
@@ -706,7 +990,7 @@ export class LoansService {
       loan.deadBalance = round2(input.deadBalance);
       // ผ่อนงวด: sync ต้นคงเหลือให้สัมพันธ์กับยอดผ่อนที่เหลือ
       if (
-        loan.status === 'INSTALLMENT' &&
+        loan.status === LoanStatus.INSTALLMENT &&
         loan.installmentTotal &&
         loan.installmentTotal > 0
       ) {
@@ -731,7 +1015,7 @@ export class LoansService {
       }
     }
     await this.activity.log({
-      type: 'ADJUST',
+      type: ActivityType.ADJUST,
       loanId: id,
       debtorId: loan.debtorId,
       debtorName: loan.debtor?.name ?? null,
@@ -752,16 +1036,16 @@ export class LoansService {
   /** ปิดยอดเอง (ถือว่าจบ ไม่ว่ายอดเหลือหรือไม่) */
   async close(id: string, reason?: string): Promise<Loan> {
     const loan = await this.findOne(id);
-    if (loan.status === 'CLOSED')
+    if (loan.status === LoanStatus.CLOSED)
       throw new BadRequestException('ยอดนี้ปิดอยู่แล้ว');
-    loan.status = 'CLOSED';
+    loan.status = LoanStatus.CLOSED;
     loan.closedAt = todayStr();
     await this.loans.update(id, {
       status: loan.status,
       closedAt: loan.closedAt,
     });
     await this.activity.log({
-      type: 'CLOSE',
+      type: ActivityType.CLOSE,
       loanId: id,
       debtorId: loan.debtorId,
       debtorName: loan.debtor?.name ?? null,
@@ -774,20 +1058,23 @@ export class LoansService {
   /** ตัดหนี้สูญ: หยุดทุกอย่าง ตรึงยอดคงเหลือเป็นผลขาดทุน */
   async writeOff(id: string, reason?: string): Promise<Loan> {
     const loan = await this.findOne(id);
-    if (loan.status === 'CLOSED' || loan.status === 'BAD_DEBT')
+    if (
+      loan.status === LoanStatus.CLOSED ||
+      loan.status === LoanStatus.BAD_DEBT
+    )
       throw new BadRequestException('ยอดนี้ปิด/ตัดหนี้สูญไปแล้ว');
     const loss =
-      loan.status === 'DEAD' || loan.status === 'INSTALLMENT'
+      loan.status === LoanStatus.DEAD || loan.status === LoanStatus.INSTALLMENT
         ? (loan.deadBalance ?? 0)
         : round2(loan.outstandingPrincipal + loan.arrears);
-    loan.status = 'BAD_DEBT';
+    loan.status = LoanStatus.BAD_DEBT;
     loan.closedAt = todayStr();
     await this.loans.update(id, {
       status: loan.status,
       closedAt: loan.closedAt,
     });
     await this.activity.log({
-      type: 'WRITE_OFF',
+      type: ActivityType.WRITE_OFF,
       loanId: id,
       debtorId: loan.debtorId,
       debtorName: loan.debtor?.name ?? null,
@@ -802,18 +1089,18 @@ export class LoansService {
   async reopen(id: string): Promise<Loan> {
     const loan = await this.findOne(id);
     if (
-      loan.status === 'ACTIVE' ||
-      loan.status === 'DEAD' ||
-      loan.status === 'INSTALLMENT'
+      loan.status === LoanStatus.ACTIVE ||
+      loan.status === LoanStatus.DEAD ||
+      loan.status === LoanStatus.INSTALLMENT
     )
       throw new BadRequestException('ยอดนี้เปิดอยู่แล้ว');
     // ผ่อนงวด: กลับสู่สถานะผ่อนต่อ ตรึงตารางผ่อนเดิมไว้
     if (this.isInstallment(loan)) {
-      loan.status = 'INSTALLMENT';
+      loan.status = LoanStatus.INSTALLMENT;
       loan.closedAt = null;
       await this.loans.update(id, { status: loan.status, closedAt: null });
       await this.activity.log({
-        type: 'REOPEN',
+        type: ActivityType.REOPEN,
         loanId: id,
         debtorId: loan.debtorId,
         debtorName: loan.debtor?.name ?? null,
@@ -822,7 +1109,7 @@ export class LoansService {
       return loan;
     }
     const yesterday = addDays(todayStr(), -1);
-    loan.status = 'ACTIVE';
+    loan.status = LoanStatus.ACTIVE;
     loan.closedAt = null;
     loan.deadDate = null;
     loan.deadBalance = null;
@@ -837,7 +1124,7 @@ export class LoansService {
       accruedThrough: loan.accruedThrough,
     });
     await this.activity.log({
-      type: 'REOPEN',
+      type: ActivityType.REOPEN,
       loanId: id,
       debtorId: loan.debtorId,
       debtorName: loan.debtor?.name ?? null,
@@ -851,7 +1138,7 @@ export class LoansService {
     const loan = await this.findOne(id);
     await this.loans.delete(id);
     await this.activity.log({
-      type: 'DELETE_LOAN',
+      type: ActivityType.DELETE_LOAN,
       loanId: id,
       debtorId: loan.debtorId,
       debtorName: loan.debtor?.name ?? null,

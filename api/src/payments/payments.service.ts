@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { todayStr } from '../common/date.util';
+import { LoanStatus, PaymentType } from '../common/enums';
 import { Loan } from '../entities/loan.entity';
 import { Payment } from '../entities/payment.entity';
 import { LoansService } from '../loans/loans.service';
@@ -14,7 +15,12 @@ export interface RecordPaymentInput {
   loanId: string;
   paidDate?: string;
   amount: number;
-  /** ไม่ส่งมา = ให้ระบบจัดสรรเอง (ค้างเก่า → ดอกวันนี้ → ตัดต้น) */
+  /** ประเภทการรับชำระ: INTEREST = ชำระดอก (ห้ามแตะต้น), PRINCIPAL = ลดต้นอย่างเดียว,
+   *  BOTH = ค้างเก่า → ดอก → ตัดต้น (ค่าเริ่มต้นเดิม) */
+  paymentType?: PaymentType;
+  /** ยอดดอกรอบนี้ที่ตกลงเก็บจริง — บันทึกลงรอบดอก (override ที่ระบบคำนวณ) */
+  interestDueOverride?: number;
+  /** ไม่ส่งมา = ให้ระบบจัดสรรเอง (ตามประเภทการรับชำระ) */
   arrearsPaid?: number;
   interestPaid?: number;
   principalPaid?: number;
@@ -28,10 +34,23 @@ export class PaymentsService {
     private loansService: LoansService,
   ) {}
 
-  /** คำนวณการจัดสรรอัตโนมัติ: ค้างเก่า → ดอกวันนี้ → ตัดต้น */
-  async suggestAllocation(loanId: string, amount: number) {
+  /**
+   * คำนวณการจัดสรรอัตโนมัติตามประเภทการรับชำระ
+   *  - INTEREST: ค้างเก่า → ดอกรอบนี้ (เงินต้นคงเดิมเสมอ)
+   *  - PRINCIPAL: ลดต้นอย่างเดียว
+   *  - BOTH: ค้างเก่า → ดอกรอบนี้ → ตัดต้น (พฤติกรรมเดิม)
+   * "ดอกรอบนี้" = รอบดอกที่กำลังเดิน (จ่ายได้ตลอดรอบ ไม่ต้องรอวันครบกำหนดพอดี)
+   * interestDueOverride = ยอดดอกรอบนี้ที่ตกลงเก็บจริง (พรีวิวก่อนบันทึก)
+   */
+  async suggestAllocation(
+    loanId: string,
+    amount: number,
+    paymentType: PaymentType = PaymentType.BOTH,
+    interestDueOverride?: number,
+  ) {
     const loan = await this.loansService.findOne(loanId);
-    const frozen = loan.status === 'DEAD' || loan.status === 'INSTALLMENT';
+    const frozen =
+      loan.status === LoanStatus.DEAD || loan.status === LoanStatus.INSTALLMENT;
     if (frozen) {
       const principalBalance = loan.deadBalance ?? 0;
       const principalPaid = Math.min(amount, principalBalance);
@@ -45,50 +64,93 @@ export class PaymentsService {
         principalBalance,
         maxReceivable: principalBalance,
         remainingPrincipal: round2(principalBalance - principalPaid),
+        cycle: null,
       };
     }
-    const today = todayStr();
-    const dueToday = this.loansService.isDueOn(loan, today)
-      ? this.loansService.interestPerCycle(loan)
+    const cur = this.loansService.currentCycleInfo(loan);
+    const cycleDue =
+      interestDueOverride !== undefined && cur
+        ? round2(interestDueOverride)
+        : (cur?.interestDue ?? 0);
+    const interestRemaining = cur
+      ? Math.max(0, round2(cycleDue - cur.interestPaid))
       : 0;
-    const paidTodayInterest = (loan.payments ?? [])
-      .filter((p) => p.paidDate === today)
-      .reduce((s, p) => s + p.interestPaid, 0);
-    const interestRemaining = Math.max(0, dueToday - paidTodayInterest);
     const arrearsDue = loan.arrears;
     const principalBalance = loan.outstandingPrincipal;
-    const maxReceivable = round2(
-      arrearsDue + interestRemaining + principalBalance,
-    );
+
+    const canArrears = paymentType !== PaymentType.PRINCIPAL;
+    const canInterest = paymentType !== PaymentType.PRINCIPAL;
+    const canPrincipal = paymentType !== PaymentType.INTEREST;
 
     let rest = amount;
-    const arrearsPaid = Math.min(rest, arrearsDue);
+    const arrearsPaid = canArrears ? Math.min(rest, arrearsDue) : 0;
     rest = round2(rest - arrearsPaid);
-    const interestPaid = Math.min(rest, interestRemaining);
+    const interestPaid = canInterest ? Math.min(rest, interestRemaining) : 0;
     rest = round2(rest - interestPaid);
-    const principalPaid = Math.min(rest, principalBalance);
+    const principalPaid = canPrincipal ? Math.min(rest, principalBalance) : 0;
+
+    const maxReceivable = round2(
+      (canArrears ? arrearsDue : 0) +
+        (canInterest ? interestRemaining : 0) +
+        (canPrincipal ? principalBalance : 0),
+    );
     return {
       arrearsPaid,
       interestPaid,
       principalPaid,
-      dueToday,
+      dueToday: cur && cur.dueDate === todayStr() ? cycleDue : 0,
       arrearsDue,
       interestDue: interestRemaining,
       principalBalance,
       maxReceivable,
       remainingPrincipal: round2(principalBalance - principalPaid),
+      /** ข้อมูลรอบดอกที่กำลังเดิน — ให้หน้าเว็บโชว์/แก้ยอดดอกและวันครบกำหนด */
+      cycle: cur
+        ? {
+            cycleId: cur.cycleId,
+            dueDate: cur.dueDate,
+            computedInterest: cur.computedInterest,
+            interestOverride:
+              interestDueOverride !== undefined
+                ? round2(interestDueOverride)
+                : cur.interestOverride,
+            interestDue: cycleDue,
+            interestPaid: cur.interestPaid,
+          }
+        : null,
     };
   }
 
   async record(input: RecordPaymentInput): Promise<Payment> {
-    const loan = await this.loansService.findOne(input.loanId);
-    if (loan.status === 'CLOSED')
+    let loan = await this.loansService.findOne(input.loanId);
+    if (loan.status === LoanStatus.CLOSED)
       throw new BadRequestException('ยอดนี้ปิดแล้ว');
-    if (loan.status === 'BAD_DEBT')
-      throw new BadRequestException('ยอดนี้ตัดหนี้สูญแล้ว — เปิดยอดคืนก่อนจึงรับชำระได้');
+    if (loan.status === LoanStatus.BAD_DEBT)
+      throw new BadRequestException(
+        'ยอดนี้ตัดหนี้สูญแล้ว — เปิดยอดคืนก่อนจึงรับชำระได้',
+      );
     if (input.amount <= 0)
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
 
+    // ตกลงลดดอกรอบนี้: บันทึกลงรอบดอกก่อน แล้วค่อยจัดสรร (ส่วนต่างไม่ค้างเป็นหนี้)
+    if (
+      input.interestDueOverride !== undefined &&
+      loan.status === LoanStatus.ACTIVE
+    ) {
+      const cur = this.loansService.currentCycleInfo(loan);
+      if (
+        cur &&
+        round2(input.interestDueOverride) !==
+          (cur.interestOverride ?? cur.computedInterest)
+      ) {
+        await this.loansService.updateCycle(loan.id, cur.cycleId, {
+          interestOverride: round2(input.interestDueOverride),
+        });
+        loan = await this.loansService.findOne(input.loanId);
+      }
+    }
+
+    const paymentType = input.paymentType;
     const manual =
       input.arrearsPaid !== undefined ||
       input.interestPaid !== undefined ||
@@ -101,11 +163,13 @@ export class PaymentsService {
       principalPaid = input.principalPaid ?? 0;
       const sum = round2(arrearsPaid + interestPaid + principalPaid);
       if (sum !== round2(input.amount))
-        throw new BadRequestException(
-          'ยอดจัดสรรรวมไม่เท่ากับจำนวนเงินที่รับ',
-        );
+        throw new BadRequestException('ยอดจัดสรรรวมไม่เท่ากับจำนวนเงินที่รับ');
     } else {
-      const s = await this.suggestAllocation(input.loanId, input.amount);
+      const s = await this.suggestAllocation(
+        input.loanId,
+        input.amount,
+        paymentType ?? PaymentType.BOTH,
+      );
       arrearsPaid = s.arrearsPaid;
       interestPaid = s.interestPaid;
       principalPaid = s.principalPaid;
@@ -116,16 +180,32 @@ export class PaymentsService {
         );
     }
 
-    const frozen = loan.status === 'DEAD' || loan.status === 'INSTALLMENT';
+    // กันเงินไหลผิดประเภท: เลือก "ชำระดอก" แล้วต้นต้องไม่ลด และกลับกัน
+    if (paymentType === PaymentType.INTEREST && principalPaid > 0)
+      throw new BadRequestException(
+        'เลือก "ชำระดอก" ไว้ — ห้ามมียอดตัดเงินต้น (เงินต้นคงเดิม)',
+      );
+    if (
+      paymentType === PaymentType.PRINCIPAL &&
+      (arrearsPaid > 0 || interestPaid > 0)
+    )
+      throw new BadRequestException(
+        'เลือก "ลดเงินต้น" ไว้ — ยอดทั้งหมดต้องเป็นตัดเงินต้น',
+      );
+
+    const frozen =
+      loan.status === LoanStatus.DEAD || loan.status === LoanStatus.INSTALLMENT;
     if (frozen) {
       if (arrearsPaid || interestPaid)
-        throw new BadRequestException('ยอดตาย/ผ่อนงวดรับเป็นเงินผ่อนอย่างเดียว');
+        throw new BadRequestException(
+          'ยอดตาย/ผ่อนงวดรับเป็นเงินผ่อนอย่างเดียว',
+        );
       if (principalPaid > (loan.deadBalance ?? 0))
         throw new BadRequestException('เกินยอดผ่อนคงเหลือ');
       loan.deadBalance = round2((loan.deadBalance ?? 0) - principalPaid);
       // ผ่อนงวด: ให้ต้นคงเหลือสัมพันธ์กับยอดผ่อนที่เหลือ
       if (
-        loan.status === 'INSTALLMENT' &&
+        loan.status === LoanStatus.INSTALLMENT &&
         loan.installmentTotal &&
         loan.installmentTotal > 0
       ) {
@@ -154,6 +234,7 @@ export class PaymentsService {
       interestPaid,
       principalPaid,
       onDeadLoan: frozen,
+      paymentType: frozen ? null : (paymentType ?? null),
       note: input.note ?? null,
     });
     await this.payments.save(payment);
@@ -172,7 +253,7 @@ export class PaymentsService {
         (loan.deadBalance ?? 0) + payment.principalPaid,
       );
       if (
-        loan.status === 'INSTALLMENT' &&
+        loan.status === LoanStatus.INSTALLMENT &&
         loan.installmentTotal &&
         loan.installmentTotal > 0
       ) {

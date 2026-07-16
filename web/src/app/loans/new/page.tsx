@@ -23,7 +23,8 @@ import {
   type PreviewLoanInput,
 } from '@/lib/hooks/useLoans';
 import { toast } from '@/lib/toast-store';
-import type { LoanCycle } from '@/lib/types';
+import { InterestMode, LoanCycle, LoanKind } from '@/lib/types';
+import type { RevolvingCycle } from '@/lib/types';
 
 export default function NewLoanPage() {
   return (
@@ -54,14 +55,14 @@ function useDebounced<T>(value: T, ms = 400): T {
   return v;
 }
 
-type Kind = 'INSTALLMENT' | 'REVOLVING';
+type Kind = LoanKind;
 
 function NewLoanView() {
   const router = useRouter();
   const params = useSearchParams();
   const { data: debtors } = useDebtors();
   const [debtorId, setDebtorId] = useState(params.get('debtorId') ?? '');
-  const [kind, setKind] = useState<Kind>('INSTALLMENT');
+  const [kind, setKind] = useState<Kind>(LoanKind.INSTALLMENT);
 
   const debtor = debtors?.find((d) => d.id === debtorId);
 
@@ -103,24 +104,24 @@ function NewLoanView() {
           <Segmented
             value={kind}
             onChange={setKind}
-            accent={kind === 'INSTALLMENT' ? 'sky' : 'primary'}
+            accent={kind === LoanKind.INSTALLMENT ? 'sky' : 'primary'}
             options={[
               {
-                value: 'INSTALLMENT',
+                value: LoanKind.INSTALLMENT,
                 label: 'ผ่อนเป็นงวด',
                 hint: 'รายเดือน / รายสัปดาห์',
               },
               {
-                value: 'REVOLVING',
+                value: LoanKind.REVOLVING,
                 label: 'ดอกลอย / คงที่',
-                hint: 'รายวัน / 10 วัน',
+                hint: 'รายวัน / 7 วัน / 10 วัน',
               },
             ]}
           />
         </Field>
       </div>
 
-      {kind === 'INSTALLMENT' ? (
+      {kind === LoanKind.INSTALLMENT ? (
         <InstallmentForm debtorId={debtorId} onDone={() => router.push(debtorId ? `/debtors/${debtorId}` : '/loans')} />
       ) : (
         <RevolvingForm debtorId={debtorId} onDone={() => router.push(debtorId ? `/debtors/${debtorId}` : '/loans')} />
@@ -132,10 +133,10 @@ function NewLoanView() {
 /* ---------- ผ่อนเป็นงวด (ดอกคงที่ / ลดต้นลดดอก) ---------- */
 
 const installmentCycles: { value: LoanCycle; label: string }[] = [
-  { value: 'MONTHLY', label: 'รายเดือน' },
-  { value: 'WEEKLY', label: 'รายสัปดาห์' },
-  { value: 'TEN_DAY', label: 'ทุก 10 วัน' },
-  { value: 'DAILY', label: 'รายวัน' },
+  { value: LoanCycle.MONTHLY, label: 'รายเดือน' },
+  { value: LoanCycle.WEEKLY, label: 'รายสัปดาห์' },
+  { value: LoanCycle.TEN_DAY, label: 'ทุก 10 วัน' },
+  { value: LoanCycle.DAILY, label: 'รายวัน' },
 ];
 
 function InstallmentForm({
@@ -152,7 +153,7 @@ function InstallmentForm({
   const [flatInterest, setFlatInterest] = useState('');
   const [rate, setRate] = useState('');
   const [count, setCount] = useState('');
-  const [cycle, setCycle] = useState<LoanCycle>('MONTHLY');
+  const [cycle, setCycle] = useState<LoanCycle>(LoanCycle.MONTHLY);
   const [firstDueAuto, setFirstDueAuto] = useState(true);
   const [firstDueDate, setFirstDueDate] = useState('');
   const [fee, setFee] = useState('');
@@ -201,7 +202,7 @@ function InstallmentForm({
     try {
       const input: CreateLoanInput = {
         debtorId,
-        type: 'INSTALLMENT',
+        type: LoanKind.INSTALLMENT,
         ...previewInput,
         note: note || undefined,
       };
@@ -235,7 +236,7 @@ function InstallmentForm({
             onChange={setMode}
             accent="sky"
             options={[
-              { value: 'FLAT', label: 'ดอกคงที่', hint: 'คิดครั้งเดียวทั้งสัญญา' },
+              { value: InterestMode.FLAT, label: 'ดอกคงที่', hint: 'คิดครั้งเดียวทั้งสัญญา' },
               {
                 value: 'AMORTIZED',
                 label: 'ลดต้นลดดอก',
@@ -502,7 +503,7 @@ function PlanTable({
   );
 }
 
-/* ---------- ดอกลอย / ดอกคงที่ (รายวัน / 10 วัน) ---------- */
+/* ---------- ดอกลอย / ดอกคงที่ (รายวัน / 7 วัน / 10 วัน) ---------- */
 
 function RevolvingForm({
   debtorId,
@@ -514,8 +515,8 @@ function RevolvingForm({
   const [startDate, setStartDate] = useState(todayISO());
   const [principal, setPrincipal] = useState('');
   const [rate, setRate] = useState('');
-  const [cycle, setCycle] = useState<'DAILY' | 'TEN_DAY'>('DAILY');
-  const [interestMode, setInterestMode] = useState<'FLOATING' | 'FLAT'>('FLOATING');
+  const [cycle, setCycle] = useState<RevolvingCycle>(LoanCycle.DAILY);
+  const [interestMode, setInterestMode] = useState<InterestMode>(InterestMode.FLOATING);
   const [isExisting, setIsExisting] = useState(false);
   const [outstanding, setOutstanding] = useState('');
   const [arrears, setArrears] = useState('');
@@ -525,7 +526,7 @@ function RevolvingForm({
   const principalNum = parseFloat(principal) || 0;
   const rateNum = parseFloat(rate) || 0;
   const base =
-    interestMode === 'FLAT'
+    interestMode === InterestMode.FLAT
       ? principalNum
       : isExisting && outstanding
         ? parseFloat(outstanding) || 0
@@ -589,8 +590,9 @@ function RevolvingForm({
             value={cycle}
             onChange={setCycle}
             options={[
-              { value: 'DAILY', label: 'รายวัน' },
-              { value: 'TEN_DAY', label: 'ราย 10 วัน' },
+              { value: LoanCycle.DAILY, label: 'รายวัน' },
+              { value: LoanCycle.WEEKLY, label: 'ทุก 7 วัน' },
+              { value: LoanCycle.TEN_DAY, label: 'ทุก 10 วัน' },
             ]}
           />
         </Field>
@@ -600,8 +602,8 @@ function RevolvingForm({
             value={interestMode}
             onChange={setInterestMode}
             options={[
-              { value: 'FLOATING', label: 'ดอกลอย', hint: 'ตัดต้นแล้วดอกลด' },
-              { value: 'FLAT', label: 'ดอกคงที่', hint: 'คิดจากต้นเดิม' },
+              { value: InterestMode.FLOATING, label: 'ดอกลอย', hint: 'ตัดต้นแล้วดอกลด' },
+              { value: InterestMode.FLAT, label: 'ดอกคงที่', hint: 'คิดจากต้นเดิม' },
             ]}
           />
         </Field>
@@ -662,7 +664,7 @@ function RevolvingForm({
             <SummaryRow
               label="รูปแบบ"
               value={
-                interestMode === 'FLAT'
+                interestMode === InterestMode.FLAT
                   ? 'ดอกคงที่ — คิดจากต้นเดิมตลอด'
                   : 'ดอกลอย — ตัดต้นแล้วดอกลดตาม'
               }

@@ -22,47 +22,74 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
+import {
+  InterestMode,
+  LoanCycle,
+  LoanKind,
+  REVOLVING_CYCLES,
+} from '../common/enums';
+import type { RevolvingCycle } from '../common/enums';
 import { LoansService } from './loans.service';
 
-const CYCLES = ['DAILY', 'WEEKLY', 'TEN_DAY', 'MONTHLY'] as const;
-type Cycle = (typeof CYCLES)[number];
+const CYCLES = Object.values(LoanCycle);
+type Cycle = LoanCycle;
 
 class CreateLoanDto {
   @IsString() @IsNotEmpty() debtorId: string;
 
   /** REVOLVING = ดอกลอย/คงที่ (ค่าเริ่มต้น), INSTALLMENT = ผ่อนเป็นงวด */
-  @IsOptional() @IsIn(['REVOLVING', 'INSTALLMENT'])
-  type?: 'REVOLVING' | 'INSTALLMENT';
+  @IsOptional()
+  @IsIn(Object.values(LoanKind))
+  type?: LoanKind;
 
   @Type(() => Number) @IsNumber() @IsPositive() principalOriginal: number;
 
   /** ยอดเก่าที่เดินอยู่แล้ว: ต้นคงเหลือ ณ วันขึ้นระบบ */
-  @IsOptional() @Type(() => Number) @IsNumber() @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
   outstandingPrincipal?: number;
 
   /** ยอดเก่าที่เดินอยู่แล้ว: ดอกค้าง ณ วันขึ้นระบบ */
-  @IsOptional() @Type(() => Number) @IsNumber() @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
   arrears?: number;
 
   /** อัตราดอก — ดอกลอย/คงที่: %/รอบ, ลดต้นลดดอก: %/งวดจากต้นคงเหลือ */
   @ValidateIf((o) => o.type !== 'INSTALLMENT' || o.amortized === true)
-  @Type(() => Number) @IsNumber() @IsPositive() interestRatePercent?: number;
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
+  interestRatePercent?: number;
 
   @IsIn(CYCLES) cycle: Cycle;
 
-  @IsOptional() @IsIn(['FLOATING', 'FLAT'])
-  interestMode?: 'FLOATING' | 'FLAT';
+  @IsOptional()
+  @IsIn(Object.values(InterestMode))
+  interestMode?: InterestMode;
 
   /** ผ่อนเป็นงวด: จำนวนงวด */
   @ValidateIf((o) => o.type === 'INSTALLMENT')
-  @Type(() => Number) @IsInt() @IsPositive() installmentCount?: number;
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  installmentCount?: number;
 
   /** ผ่อนดอกคงที่: ดอกรวมทั้งสัญญา (บาท, 0 ได้) */
-  @IsOptional() @Type(() => Number) @IsNumber() @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
   totalInterest?: number;
 
   /** ผ่อนดอกคงที่ (รูปแบบเดิม): ยอดผ่อนรวม (ต้น + ดอกรวม) */
-  @IsOptional() @Type(() => Number) @IsNumber() @IsPositive()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
   installmentTotal?: number;
 
   /** ผ่อนเป็นงวด: true = ลดต้นลดดอก */
@@ -94,7 +121,10 @@ class PreviewLoanDto {
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) totalInterest?: number;
 
-  @IsOptional() @Type(() => Number) @IsNumber() @IsPositive()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
   interestRatePercent?: number;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) fee?: number;
@@ -111,16 +141,38 @@ class ConvertDeadDto {
 }
 
 class EditLoanDto {
-  @IsOptional() @Type(() => Number) @IsNumber() @IsPositive()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
   interestRatePercent?: number;
 
-  @IsOptional() @IsIn(['DAILY', 'TEN_DAY']) cycle?: 'DAILY' | 'TEN_DAY';
+  @IsOptional()
+  @IsIn(REVOLVING_CYCLES)
+  cycle?: RevolvingCycle;
 
   @IsOptional() @IsString() note?: string;
 }
 
+/** แก้รอบดอกรายรอบ: เลื่อนวันครบกำหนด / ตกลงเก็บดอกจริง */
+class EditCycleDto {
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) dueDate?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  interestOverride?: number;
+
+  /** true = ล้าง override กลับไปใช้ดอกที่ระบบคำนวณ */
+  @IsOptional() @IsBoolean() clearOverride?: boolean;
+}
+
 class AdjustLoanDto {
-  @IsOptional() @Type(() => Number) @IsNumber() @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
   outstandingPrincipal?: number;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) arrears?: number;
@@ -163,6 +215,24 @@ export class LoansController {
   @Get(':id/schedule')
   schedule(@Param('id') id: string) {
     return this.loans.getSchedule(id);
+  }
+
+  /** รอบดอกของยอดดอกลอย/คงที่ (รอบล่าสุด + รอบที่กำลังเดิน/อนาคต) */
+  @Get(':id/cycles')
+  cycles(@Param('id') id: string) {
+    return this.loans.getCycles(id);
+  }
+
+  @Patch(':id/cycles/:cycleId')
+  editCycle(
+    @Param('id') id: string,
+    @Param('cycleId') cycleId: string,
+    @Body() dto: EditCycleDto,
+  ) {
+    return this.loans.updateCycle(id, cycleId, {
+      dueDate: dto.dueDate,
+      interestOverride: dto.clearOverride ? null : dto.interestOverride,
+    });
   }
 
   @Post(':id/dead')

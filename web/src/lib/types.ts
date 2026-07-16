@@ -1,22 +1,27 @@
-export type LoanStatus =
-  | 'ACTIVE'
-  | 'DEAD'
-  | 'INSTALLMENT'
-  | 'CLOSED'
-  | 'BAD_DEBT';
-export type LoanCycle = 'DAILY' | 'WEEKLY' | 'TEN_DAY' | 'MONTHLY';
-export type InterestMode = 'FLOATING' | 'FLAT';
-
-export type ActivityType =
-  | 'ADJUST'
-  | 'CLOSE'
-  | 'REOPEN'
-  | 'WRITE_OFF'
-  | 'EDIT_LOAN'
-  | 'DELETE_LOAN'
-  | 'CONVERT_DEAD'
-  | 'EDIT_DEBTOR'
-  | 'DELETE_DEBTOR';
+// ค่าคงที่/enum ทั้งหมดนิยามที่ enums.ts — re-export ให้ import จาก types ได้เหมือนเดิม
+export {
+  ActivityType,
+  AttachmentKind,
+  CashTxType,
+  InterestMode,
+  LoanCycle,
+  LoanKind,
+  LoanStatus,
+  PaymentType,
+  REVOLVING_CYCLES,
+  ScheduleRowStatus,
+} from './enums';
+export type { RevolvingCycle } from './enums';
+import type {
+  ActivityType,
+  AttachmentKind,
+  CashTxType,
+  InterestMode,
+  LoanCycle,
+  LoanStatus,
+  PaymentType,
+  ScheduleRowStatus,
+} from './enums';
 
 export interface Activity {
   id: string;
@@ -55,8 +60,6 @@ export interface EmergencyContact {
   line?: string;
   note?: string;
 }
-
-export type AttachmentKind = 'SLIP' | 'ID_CARD' | 'OTHER';
 
 export interface Attachment {
   id: string;
@@ -134,8 +137,6 @@ export interface LoanListItem {
   note: string | null;
 }
 
-export type ScheduleRowStatus = 'PAID' | 'PARTIAL' | 'DUE' | 'PENDING';
-
 export interface ScheduleRow {
   n: number;
   dueDate: string;
@@ -191,7 +192,35 @@ export interface Payment {
   interestPaid: number;
   principalPaid: number;
   onDeadLoan: boolean;
+  paymentType: PaymentType | null;
   note: string | null;
+}
+
+/** รอบดอกที่กำลังเดินของยอดดอกลอย/คงที่ (จาก suggest/cycles API) */
+export interface CurrentCycle {
+  cycleId: string;
+  dueDate: string;
+  /** ดอกที่ระบบคำนวณจากต้นคงเหลือล่าสุด */
+  computedInterest: number;
+  /** ยอดที่ตกลงเก็บจริง (null = ใช้ที่ระบบคำนวณ) */
+  interestOverride: number | null;
+  interestDue: number;
+  interestPaid: number;
+}
+
+export interface LoanCycleRow {
+  id: string;
+  dueDate: string;
+  interest: number;
+  computedInterest: number;
+  interestOverride: number | null;
+  accrued: boolean;
+  accruedAmount: number | null;
+}
+
+export interface LoanCyclesInfo {
+  current: (CurrentCycle & { interestRemaining: number }) | null;
+  rows: LoanCycleRow[];
 }
 
 export interface TodayItem {
@@ -209,8 +238,6 @@ export interface TodayItem {
   paidToday: number;
   remainingToday: number;
 }
-
-export type CashTxType = 'CAPITAL_IN' | 'CAPITAL_OUT' | 'INCOME' | 'EXPENSE';
 
 export interface CashTx {
   id: string;

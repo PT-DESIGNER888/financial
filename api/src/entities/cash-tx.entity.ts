@@ -14,7 +14,10 @@ import {
  *  EXPENSE     รายจ่าย (ค่าเดินทาง ค่าน้ำมัน ฯลฯ)
  * (เงินปล่อยกู้/เงินเก็บได้ ไม่บันทึกที่นี่ — ดึงจาก loans/payments อัตโนมัติ)
  */
-export type CashTxType = 'CAPITAL_IN' | 'CAPITAL_OUT' | 'INCOME' | 'EXPENSE';
+import { CashTxType } from '../common/enums';
+
+// re-export ให้โค้ดเดิมที่ import จาก entity ใช้ได้ต่อ — นิยามจริงอยู่ที่ common/enums
+export { CashTxType } from '../common/enums';
 
 const money = {
   type: 'numeric' as const,

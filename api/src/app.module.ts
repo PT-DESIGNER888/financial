@@ -14,6 +14,7 @@ import { Attachment } from './entities/attachment.entity';
 import { CashTx } from './entities/cash-tx.entity';
 import { Debtor } from './entities/debtor.entity';
 import { Loan } from './entities/loan.entity';
+import { LoanCycle } from './entities/loan-cycle.entity';
 import { Payment } from './entities/payment.entity';
 import { Setting } from './entities/setting.entity';
 import { User } from './entities/user.entity';
@@ -26,6 +27,7 @@ const entities = [
   User,
   Debtor,
   Loan,
+  LoanCycle,
   Payment,
   Activity,
   CashTx,

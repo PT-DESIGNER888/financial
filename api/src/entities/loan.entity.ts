@@ -7,18 +7,13 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import { InterestMode, LoanCycle, LoanStatus } from '../common/enums';
 import { Debtor } from './debtor.entity';
+import { LoanCycle as CycleRow } from './loan-cycle.entity';
 import { Payment } from './payment.entity';
 
-export type LoanStatus =
-  | 'ACTIVE'
-  | 'DEAD'
-  | 'INSTALLMENT'
-  | 'CLOSED'
-  | 'BAD_DEBT';
-export type LoanCycle = 'DAILY' | 'WEEKLY' | 'TEN_DAY' | 'MONTHLY';
-/** FLOATING = ดอกลอย (จากต้นคงเหลือ), FLAT = ดอกคงที่ (จากต้นเดิม ไม่ลดตามตัดต้น) */
-export type InterestMode = 'FLOATING' | 'FLAT';
+// re-export ให้โค้ดเดิมที่ import จาก entity ใช้ได้ต่อ — นิยามจริงอยู่ที่ common/enums
+export { InterestMode, LoanCycle, LoanStatus } from '../common/enums';
 
 const money = {
   type: 'numeric' as const,
@@ -47,13 +42,13 @@ export class Loan {
   @Column({ type: 'varchar', nullable: true })
   contractNumber: string | null;
 
-  @Column({ type: 'varchar', default: 'ACTIVE' })
+  @Column({ type: 'varchar', default: LoanStatus.ACTIVE })
   status: LoanStatus;
 
   @Column({ type: 'varchar' })
   cycle: LoanCycle;
 
-  @Column({ type: 'varchar', default: 'FLOATING' })
+  @Column({ type: 'varchar', default: InterestMode.FLOATING })
   interestMode: InterestMode;
 
   /** เงินต้นตอนเปิดยอด */
@@ -65,7 +60,12 @@ export class Loan {
   outstandingPrincipal: number;
 
   /** % ของต้นคงเหลือ ต่อรอบเก็บ */
-  @Column({ type: 'numeric', precision: 6, scale: 3, transformer: money.transformer })
+  @Column({
+    type: 'numeric',
+    precision: 6,
+    scale: 3,
+    transformer: money.transformer,
+  })
   interestRatePercent: number;
 
   /** ดอกถึงกำหนดแล้วยังไม่จ่าย (ไม่คิดดอกทบ) */
@@ -126,6 +126,10 @@ export class Loan {
 
   @OneToMany(() => Payment, (p) => p.loan)
   payments: Payment[];
+
+  /** รอบเก็บดอก (เฉพาะยอดดอกลอย/คงที่ ACTIVE) — gen อัตโนมัติ แก้รายรอบได้ */
+  @OneToMany(() => CycleRow, (c) => c.loan)
+  cycles: CycleRow[];
 
   @Column({ type: 'date', nullable: true })
   closedAt: string | null;

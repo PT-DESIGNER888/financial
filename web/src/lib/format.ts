@@ -1,3 +1,5 @@
+import type { LoanCycle, LoanStatus } from './enums';
+
 export function baht(n: number | null | undefined): string {
   if (n === null || n === undefined) return '-';
   return n.toLocaleString('th-TH', {
@@ -15,20 +17,21 @@ export function thaiDate(dateStr: string): string {
   });
 }
 
-export const cycleLabel = {
+// key ตาม enum กลาง — เพิ่มค่าใหม่ใน enums.ts แล้ว TypeScript จะบังคับให้เติม label ที่นี่
+export const cycleLabel: Record<LoanCycle, string> = {
   DAILY: 'รายวัน',
   WEEKLY: 'รายสัปดาห์',
   TEN_DAY: 'ราย 10 วัน',
   MONTHLY: 'รายเดือน',
-} as const;
+};
 
-export const statusLabel = {
+export const statusLabel: Record<LoanStatus, string> = {
   ACTIVE: 'ปกติ',
   DEAD: 'ยอดตาย',
   INSTALLMENT: 'ผ่อนเป็นงวด',
   CLOSED: 'ปิดแล้ว',
   BAD_DEBT: 'หนี้สูญ',
-} as const;
+};
 
 export function thaiDateTime(iso: string): string {
   const d = new Date(iso);

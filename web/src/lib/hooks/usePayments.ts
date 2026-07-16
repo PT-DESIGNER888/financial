@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Payment } from '@/lib/types';
+import type { CurrentCycle, Payment, PaymentType } from '@/lib/types';
 import { invalidateMoney } from './keys';
 
 export interface Allocation {
@@ -13,18 +13,25 @@ export interface Allocation {
   principalBalance?: number;
   maxReceivable?: number;
   remainingPrincipal?: number;
+  /** รอบดอกที่กำลังเดิน — null = ยอดตาย/ผ่อนงวด หรือไม่มีรอบ */
+  cycle?: CurrentCycle | null;
 }
 
-/** ขอการจัดสรรเงินอัตโนมัติ (ค้าง→ดอก→ต้น) — ยิงใหม่เมื่อ amount เปลี่ยน */
+/** ขอการจัดสรรเงินอัตโนมัติตามประเภทการชำระ — ยิงใหม่เมื่อ amount/type/ดอกที่แก้ เปลี่ยน */
 export function useSuggestAllocation(
   loanId: string,
   amount: number,
   enabled: boolean,
+  paymentType: PaymentType = 'BOTH',
+  interestDue?: number,
 ) {
   return useQuery({
-    queryKey: ['payments', 'suggest', loanId, amount],
+    queryKey: ['payments', 'suggest', loanId, amount, paymentType, interestDue],
     queryFn: () =>
-      api<Allocation>(`/payments/suggest?loanId=${loanId}&amount=${amount}`),
+      api<Allocation>(
+        `/payments/suggest?loanId=${loanId}&amount=${amount}&type=${paymentType}` +
+          (interestDue !== undefined ? `&interestDue=${interestDue}` : ''),
+      ),
     enabled: enabled && amount > 0,
     staleTime: 0,
   });
@@ -34,6 +41,9 @@ export interface RecordPaymentInput {
   loanId: string;
   amount: number;
   paidDate?: string;
+  paymentType?: PaymentType;
+  /** ยอดดอกรอบนี้ที่ตกลงเก็บจริง — บันทึกลงรอบดอกพร้อมการรับเงิน */
+  interestDueOverride?: number;
   arrearsPaid?: number;
   interestPaid?: number;
   principalPaid?: number;

@@ -5,17 +5,10 @@ import {
   Index,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import { ActivityType } from '../common/enums';
 
-export type ActivityType =
-  | 'ADJUST' // ปรับยอดด้วยมือ
-  | 'CLOSE' // ปิดยอดเอง
-  | 'REOPEN' // เปิดยอดคืน
-  | 'WRITE_OFF' // ตัดหนี้สูญ
-  | 'EDIT_LOAN' // แก้เงื่อนไขยอดกู้
-  | 'DELETE_LOAN' // ลบยอดกู้
-  | 'CONVERT_DEAD' // แปลงยอดตาย
-  | 'EDIT_DEBTOR' // แก้ข้อมูลลูกหนี้
-  | 'DELETE_DEBTOR'; // ลบลูกหนี้
+// re-export ให้โค้ดเดิมที่ import จาก entity ใช้ได้ต่อ — นิยามจริงอยู่ที่ common/enums
+export { ActivityType } from '../common/enums';
 
 const money = {
   type: 'numeric' as const,

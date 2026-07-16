@@ -1,3 +1,4 @@
+import { LoanStatus } from '../common/enums';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -45,7 +46,7 @@ export class NotifyService {
   async overdue() {
     await this.loansService.accrueAllActive();
     const loans = await this.loans.find({
-      where: { status: 'ACTIVE' },
+      where: { status: LoanStatus.ACTIVE },
       relations: { debtor: true },
     });
     return loans
@@ -65,24 +66,31 @@ export class NotifyService {
     await this.loansService.accrueAllActive();
     const today = todayStr();
     const loans = await this.loans.find({
-      where: { status: In(['ACTIVE', 'DEAD', 'INSTALLMENT']) },
-      relations: { debtor: true },
+      where: {
+        status: In([
+          LoanStatus.ACTIVE,
+          LoanStatus.DEAD,
+          LoanStatus.INSTALLMENT,
+        ]),
+      },
+      relations: { debtor: true, cycles: true },
     });
 
     const lines: string[] = [];
     let total = 0;
     let count = 0;
     for (const l of loans) {
-      const frozen = l.status === 'DEAD' || l.status === 'INSTALLMENT';
+      const frozen =
+        l.status === LoanStatus.DEAD || l.status === LoanStatus.INSTALLMENT;
       const due = this.loansService.isDueOn(l, today);
       const interest =
-        l.status === 'ACTIVE' && due
-          ? this.loansService.interestPerCycle(l)
+        l.status === LoanStatus.ACTIVE && due
+          ? this.loansService.dueInterestOn(l, today)
           : 0;
       let installment = 0;
-      if (l.status === 'DEAD' && due) {
+      if (l.status === LoanStatus.DEAD && due) {
         installment = Math.min(l.installmentAmount ?? 0, l.deadBalance ?? 0);
-      } else if (l.status === 'INSTALLMENT') {
+      } else if (l.status === LoanStatus.INSTALLMENT) {
         installment =
           this.loansService.buildInstallmentSchedule(l, today)?.dueNow ?? 0;
       }
@@ -92,9 +100,9 @@ export class NotifyService {
       count++;
       total += owe;
       const tag =
-        l.status === 'DEAD'
+        l.status === LoanStatus.DEAD
           ? ' (ผ่อน)'
-          : l.status === 'INSTALLMENT'
+          : l.status === LoanStatus.INSTALLMENT
             ? ' (ผ่อนงวด)'
             : '';
       lines.push(`• ${l.debtor?.name ?? ''}${tag}: ฿${fmt(owe)}`);
@@ -132,7 +140,11 @@ export class NotifyService {
       });
       if (!res.ok) {
         const body = await res.text();
-        return { sent: false, reason: `LINE ตอบกลับ ${res.status}: ${body}`, preview: message };
+        return {
+          sent: false,
+          reason: `LINE ตอบกลับ ${res.status}: ${body}`,
+          preview: message,
+        };
       }
       return { sent: true, preview: message };
     } catch (e) {

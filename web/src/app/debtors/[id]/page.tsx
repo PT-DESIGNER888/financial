@@ -48,6 +48,7 @@ import {
   useDeleteDebtor,
   useUpdateDebtor,
 } from '@/lib/hooks/useDebtors';
+import { DatePicker } from '@/components/date-picker';
 import {
   useAdjustLoan,
   useAllLoans,
@@ -55,18 +56,23 @@ import {
   useDeleteLoan,
   useEditLoan,
   useLoanAction,
+  useLoanCycles,
   useLoanSchedule,
+  useUpdateCycle,
 } from '@/lib/hooks/useLoans';
 import { useDeletePayment } from '@/lib/hooks/usePayments';
 import { confirmDialog } from '@/lib/confirm-store';
 import { toast } from '@/lib/toast-store';
+import { LoanCycle, LoanStatus } from '@/lib/types';
 import type {
   Attachment,
   AttachmentKind,
+  CurrentCycle,
   Debtor,
   EmergencyContact,
   InstallmentSchedule,
   Loan,
+  RevolvingCycle,
   ScheduleRowStatus,
 } from '@/lib/types';
 
@@ -138,12 +144,12 @@ function DebtorView({ id }: { id: string }) {
   const loans = debtor.loans ?? [];
   const open = loans.filter(
     (l) =>
-      l.status === 'ACTIVE' ||
-      l.status === 'DEAD' ||
-      l.status === 'INSTALLMENT',
+      l.status === LoanStatus.ACTIVE ||
+      l.status === LoanStatus.DEAD ||
+      l.status === LoanStatus.INSTALLMENT,
   );
   const inactive = loans.filter(
-    (l) => l.status === 'CLOSED' || l.status === 'BAD_DEBT',
+    (l) => l.status === LoanStatus.CLOSED || l.status === LoanStatus.BAD_DEBT,
   );
 
   const lineHref = debtor.lineId
@@ -362,9 +368,9 @@ function DebtorView({ id }: { id: string }) {
         <PaymentModal
           loanId={paying.id}
           debtorName={debtor.name}
-          frozen={paying.status === 'DEAD' || paying.status === 'INSTALLMENT'}
+          frozen={paying.status === LoanStatus.DEAD || paying.status === LoanStatus.INSTALLMENT}
           quickAmounts={
-            paying.status === 'DEAD' || paying.status === 'INSTALLMENT'
+            paying.status === LoanStatus.DEAD || paying.status === LoanStatus.INSTALLMENT
               ? [
                   {
                     label: 'งวดละ',
@@ -420,9 +426,9 @@ function DebtorSummaryStrip({ debtorId }: { debtorId: string }) {
   const mine = loans.filter((l) => l.debtorId === debtorId);
   const open = mine.filter(
     (l) =>
-      l.status === 'ACTIVE' ||
-      l.status === 'DEAD' ||
-      l.status === 'INSTALLMENT',
+      l.status === LoanStatus.ACTIVE ||
+      l.status === LoanStatus.DEAD ||
+      l.status === LoanStatus.INSTALLMENT,
   );
   if (mine.length === 0) return null;
   const remaining = open.reduce((s, l) => s + l.remaining, 0);
@@ -510,11 +516,11 @@ function LoanCard({
     (s, p) => s + (p.onDeadLoan ? 0 : p.principalPaid),
     0,
   );
-  const isInstallment = loan.status === 'INSTALLMENT';
+  const isInstallment = loan.status === LoanStatus.INSTALLMENT;
   const isOpen =
-    loan.status === 'ACTIVE' ||
-    loan.status === 'DEAD' ||
-    loan.status === 'INSTALLMENT';
+    loan.status === LoanStatus.ACTIVE ||
+    loan.status === LoanStatus.DEAD ||
+    loan.status === LoanStatus.INSTALLMENT;
 
   // โหลดตารางผ่อนของยอด INSTALLMENT เพื่อโชว์จำนวนงวดที่จ่ายแล้ว
   const { data: schedule } = useLoanSchedule(loan.id, isInstallment);
@@ -642,7 +648,7 @@ function LoanCard({
               color="text-emerald-700 dark:text-emerald-400"
             />
           </>
-        ) : loan.status === 'DEAD' ? (
+        ) : loan.status === LoanStatus.DEAD ? (
           <>
             <Stat label="ยอดตายคงเหลือ" value={loan.deadBalance ?? 0} />
             <Stat label="งวดผ่อน/10วัน" value={loan.installmentAmount ?? 0} />
@@ -671,6 +677,8 @@ function LoanCard({
         )}
       </div>
 
+      {loan.status === LoanStatus.ACTIVE && <NextCycleRow loanId={loan.id} />}
+
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
@@ -688,7 +696,7 @@ function LoanCard({
             ตารางผ่อน
           </button>
         )}
-        {loan.status === 'ACTIVE' && onConvert && (
+        {loan.status === LoanStatus.ACTIVE && onConvert && (
           <button
             type="button"
             onClick={onConvert}
@@ -822,6 +830,124 @@ function LoanCard({
         </div>
       )}
     </div>
+  );
+}
+
+/** รอบดอกถัดไปของยอดดอกลอย/คงที่ — ระบบคำนวณให้ แต่เลื่อนวัน/แก้ยอดดอกได้ */
+function NextCycleRow({ loanId }: { loanId: string }) {
+  const { data } = useLoanCycles(loanId, true);
+  const [editing, setEditing] = useState(false);
+  const cur = data?.current;
+  if (!cur) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-gray-700 dark:bg-gray-950/60">
+      <p className="text-sm text-slate-600 dark:text-gray-300">
+        รอบดอกถัดไป{' '}
+        <b className="text-slate-900 dark:text-white">{thaiDate(cur.dueDate)}</b>
+        {' · '}ดอก{' '}
+        <b className="text-slate-900 dark:text-white">
+          ฿{baht(cur.interestDue)}
+        </b>
+        {cur.interestOverride != null && (
+          <span className="ml-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-400">
+            ตกลงพิเศษ (ระบบคำนวณ ฿{baht(cur.computedInterest)})
+          </span>
+        )}
+        {cur.interestPaid > 0 && (
+          <span className="ml-1.5 text-emerald-700 dark:text-emerald-400">
+            จ่ายแล้ว ฿{baht(cur.interestPaid)}
+          </span>
+        )}
+      </p>
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+      >
+        <IconEdit className="size-3.5" />
+        เลื่อนวัน / แก้ดอก
+      </button>
+      {editing && (
+        <EditCycleModal
+          loanId={loanId}
+          cycle={cur}
+          onClose={() => setEditing(false)}
+          onSaved={() => setEditing(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditCycleModal({
+  loanId,
+  cycle,
+  onClose,
+  onSaved,
+}: {
+  loanId: string;
+  cycle: CurrentCycle;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [dueDate, setDueDate] = useState(cycle.dueDate);
+  const [interest, setInterest] = useState(String(cycle.interestDue));
+  const [error, setError] = useState('');
+  const update = useUpdateCycle();
+
+  const save = async () => {
+    setError('');
+    const n = parseFloat(interest);
+    if (interest.trim() !== '' && (!Number.isFinite(n) || n < 0)) {
+      setError('ยอดดอกต้องไม่ติดลบ');
+      return;
+    }
+    const input: {
+      dueDate?: string;
+      interestOverride?: number;
+      clearOverride?: boolean;
+    } = {};
+    if (dueDate !== cycle.dueDate) input.dueDate = dueDate;
+    if (interest.trim() === '' || n === cycle.computedInterest) {
+      // เท่ากับที่ระบบคำนวณ = ไม่ต้อง override (ดอกลดตามต้นอัตโนมัติต่อ)
+      if (cycle.interestOverride != null) input.clearOverride = true;
+    } else if (n !== (cycle.interestOverride ?? cycle.computedInterest)) {
+      input.interestOverride = n;
+    }
+    if (Object.keys(input).length === 0) {
+      onSaved();
+      return;
+    }
+    try {
+      await update.mutateAsync({ loanId, cycleId: cycle.cycleId, input });
+      toast('บันทึกรอบดอกแล้ว');
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ');
+    }
+  };
+
+  return (
+    <ModalShell title="แก้รอบดอกรอบนี้" onClose={onClose}>
+      <Field label="วันครบกำหนด">
+        <DatePicker value={dueDate} onChange={setDueDate} />
+      </Field>
+      <Field label={`ยอดดอกที่ตกลงเก็บ (ระบบคำนวณ ฿${baht(cycle.computedInterest)})`}>
+        <TextInput
+          type="number"
+          inputMode="decimal"
+          align="right"
+          value={interest}
+          onChange={(e) => setInterest(e.target.value)}
+        />
+      </Field>
+      <p className="text-xs text-gray-400 dark:text-gray-500">
+        * แก้เฉพาะรอบนี้ — รอบถัดไปกลับไปคำนวณจากต้นคงเหลือตามปกติ
+        ใส่เท่ากับที่ระบบคำนวณเพื่อยกเลิกยอดตกลงพิเศษ
+      </p>
+      {error && <p className="text-sm text-red-500">{error}</p>}
+      <ModalButtons onClose={onClose} onSave={save} saving={update.isPending} />
+    </ModalShell>
   );
 }
 
@@ -1220,9 +1346,9 @@ function EditLoanModal({
   onSaved: () => void;
 }) {
   const [rate, setRate] = useState(String(loan.interestRatePercent));
-  // แก้เงื่อนไขได้เฉพาะยอดดอกลอย/คงที่ ซึ่งมีแค่รายวัน/10 วัน
-  const [cycle, setCycle] = useState<'DAILY' | 'TEN_DAY'>(
-    loan.cycle === 'TEN_DAY' ? 'TEN_DAY' : 'DAILY',
+  // แก้เงื่อนไขได้เฉพาะยอดดอกลอย/คงที่ (รายวัน / 7 วัน / 10 วัน)
+  const [cycle, setCycle] = useState<RevolvingCycle>(
+    loan.cycle === LoanCycle.MONTHLY ? LoanCycle.DAILY : loan.cycle,
   );
   const [note, setNote] = useState(loan.note ?? '');
   const [error, setError] = useState('');
@@ -1262,8 +1388,9 @@ function EditLoanModal({
           value={cycle}
           onChange={(v) => setCycle(v)}
           options={[
-            { value: 'DAILY', label: 'รายวัน' },
-            { value: 'TEN_DAY', label: 'ราย 10 วัน' },
+            { value: LoanCycle.DAILY, label: 'รายวัน' },
+            { value: LoanCycle.WEEKLY, label: 'ทุก 7 วัน' },
+            { value: LoanCycle.TEN_DAY, label: 'ทุก 10 วัน' },
           ]}
         />
       </Field>
@@ -1288,7 +1415,7 @@ function AdjustModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const isDead = loan.status === 'DEAD' || loan.status === 'INSTALLMENT';
+  const isDead = loan.status === LoanStatus.DEAD || loan.status === LoanStatus.INSTALLMENT;
   const [principal, setPrincipal] = useState(
     String(loan.outstandingPrincipal),
   );
@@ -1386,7 +1513,7 @@ function ReasonModal({
   const isWriteOff = kind === 'write-off';
   const action = useLoanAction(kind);
   const loss =
-    loan.status === 'DEAD' || loan.status === 'INSTALLMENT'
+    loan.status === LoanStatus.DEAD || loan.status === LoanStatus.INSTALLMENT
       ? (loan.deadBalance ?? 0)
       : loan.outstandingPrincipal + loan.arrears;
 
