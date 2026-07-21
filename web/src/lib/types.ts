@@ -223,20 +223,94 @@ export interface LoanCyclesInfo {
   rows: LoanCycleRow[];
 }
 
+/** รายการเก็บของยอดกู้หนึ่งก้อนในวันที่เลือก */
 export interface TodayItem {
   loanId: string;
-  debtorId: string;
-  debtorName: string;
+  contractNumber: string | null;
   status: LoanStatus;
   cycle: LoanCycle;
   outstandingPrincipal: number;
-  arrears: number;
   deadBalance: number | null;
-  isDueToday: boolean;
+  /** ยอดค้างสะสม — ข้อมูลประกอบ ไม่รวมใน dueTotal */
+  arrears: number;
   dueInterest: number;
+  /** นัดคืนต้นที่ถึงกำหนดวันนี้ */
+  duePrincipal: number;
   dueInstallment: number;
+  dueTotal: number;
   paidToday: number;
   remainingToday: number;
+  principalDueDate: string | null;
+  note: string | null;
+}
+
+/** ยอดรวมของลูกหนี้หนึ่งคนในวันที่เลือก — การ์ดหนึ่งใบ = ลูกหนี้หนึ่งคน */
+export interface TodayDebtor {
+  debtorId: string;
+  debtorName: string;
+  phone: string | null;
+  outstandingPrincipal: number;
+  deadBalance: number;
+  arrears: number;
+  dueInterest: number;
+  duePrincipal: number;
+  dueInstallment: number;
+  dueTotal: number;
+  paidToday: number;
+  remainingToday: number;
+  items: TodayItem[];
+}
+
+/** แถวยอดค้าง/ยอดตายรายสัญญาในหน้ายอดค้าง */
+export interface ArrearsRow {
+  loanId: string;
+  contractNumber: string | null;
+  status: LoanStatus;
+  amount: number;
+  outstandingPrincipal: number;
+  installmentAmount: number | null;
+  principalDueDate: string | null;
+  principalDueAmount: number | null;
+  note: string | null;
+}
+
+export interface ArrearsDebtor {
+  debtorId: string;
+  debtorName: string;
+  phone: string | null;
+  total: number;
+  rows: ArrearsRow[];
+}
+
+export interface ArrearsSection {
+  debtors: ArrearsDebtor[];
+  total: number;
+  debtorCount: number;
+}
+
+export interface ArrearsData {
+  arrears: ArrearsSection;
+  dead: ArrearsSection;
+  grandTotal: number;
+}
+
+/** บิลของลูกหนี้หนึ่งคนในวันที่เลือก — สำหรับแคปส่งให้ลูกหนี้ */
+export interface BillData {
+  date: string;
+  debtorId: string;
+  debtorName: string;
+  phone: string | null;
+  items: TodayItem[];
+  dueInterest: number;
+  duePrincipal: number;
+  dueInstallment: number;
+  dueTotal: number;
+  paidToday: number;
+  remainingToday: number;
+  outstandingPrincipal: number;
+  arrearsTotal: number;
+  deadTotal: number;
+  balanceTotal: number;
 }
 
 export interface CashTx {

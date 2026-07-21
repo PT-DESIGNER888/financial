@@ -40,4 +40,8 @@ export {
   CalendarClock as IconCycle,
   Banknote as IconBanknote,
   CalendarDays as IconToday,
+  ReceiptText as IconBill,
+  TriangleAlert as IconOverdue,
+  Copy as IconCopy,
+  ChevronRight as IconChevronRight,
 } from 'lucide-react';

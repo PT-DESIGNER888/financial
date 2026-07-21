@@ -10,6 +10,7 @@ import {
   IconList,
   IconLogout,
   IconMoon,
+  IconOverdue,
   IconSettings,
   IconSun,
   IconUsers,
@@ -22,7 +23,15 @@ import { useAuthStore } from '@/lib/auth-store';
 const menu = [
   {
     group: 'ประจำวัน',
-    items: [{ href: '/', label: 'เก็บวันนี้', short: 'วันนี้', Icon: IconList }],
+    items: [
+      { href: '/', label: 'เก็บวันนี้', short: 'วันนี้', Icon: IconList },
+      {
+        href: '/arrears',
+        label: 'ยอดค้าง',
+        short: 'ค้าง',
+        Icon: IconOverdue,
+      },
+    ],
   },
   {
     group: 'จัดการ',

@@ -17,6 +17,49 @@ export function thaiDate(dateStr: string): string {
   });
 }
 
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** วันนี้ตามเครื่อง รูปแบบ YYYY-MM-DD (ตรงกับที่ API ใช้) */
+export function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function addDaysISO(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const t = new Date(y, m - 1, d + days);
+  return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+}
+
+/** 0 = อาทิตย์ … 6 = เสาร์ */
+export function weekdayOf(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).getDay();
+}
+
+/** ชื่อวันแบบสั้น (จ, อ, พ…) เรียงตาม index ของ Date.getDay() */
+export const WEEKDAY_SHORT = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+export const WEEKDAY_FULL = [
+  'อาทิตย์',
+  'จันทร์',
+  'อังคาร',
+  'พุธ',
+  'พฤหัสบดี',
+  'ศุกร์',
+  'เสาร์',
+];
+
+/** วันจันทร์ของสัปดาห์ที่ dateStr อยู่ (สัปดาห์เริ่มวันจันทร์) */
+export function mondayOf(dateStr: string): string {
+  const wd = weekdayOf(dateStr);
+  return addDaysISO(dateStr, wd === 0 ? -6 : 1 - wd);
+}
+
+/** "วันจันทร์ 21 ก.ค. 69" — ใช้เป็นหัวข้อของวันที่เลือก */
+export function thaiDateLong(dateStr: string): string {
+  return `วัน${WEEKDAY_FULL[weekdayOf(dateStr)]} ${thaiDate(dateStr)}`;
+}
+
 // key ตาม enum กลาง — เพิ่มค่าใหม่ใน enums.ts แล้ว TypeScript จะบังคับให้เติม label ที่นี่
 export const cycleLabel: Record<LoanCycle, string> = {
   DAILY: 'รายวัน',

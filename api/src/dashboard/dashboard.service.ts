@@ -10,7 +10,7 @@ import { round2 } from '../loans/installment-plan';
 import { LoansService } from '../loans/loans.service';
 
 /** รายการเก็บของยอดกู้หนึ่งก้อนในวันที่เลือก */
-interface DayLoanItem {
+export interface DayLoanItem {
   loanId: string;
   contractNumber: string | null;
   status: LoanStatus;
@@ -30,7 +30,7 @@ interface DayLoanItem {
 }
 
 /** ยอดรวมของลูกหนี้หนึ่งคนในวันที่เลือก (การ์ดหนึ่งใบ = ลูกหนี้หนึ่งคน) */
-interface DayDebtorGroup {
+export interface DayDebtorGroup {
   debtorId: string;
   debtorName: string;
   phone: string | null;
@@ -44,6 +44,28 @@ interface DayDebtorGroup {
   paidToday: number;
   remainingToday: number;
   items: DayLoanItem[];
+}
+
+/** แถวยอดค้าง/ยอดตายรายสัญญาในหน้ายอดค้าง */
+export interface ArrearsRow {
+  loanId: string;
+  contractNumber: string | null;
+  status: LoanStatus;
+  amount: number;
+  outstandingPrincipal: number;
+  installmentAmount: number | null;
+  principalDueDate: string | null;
+  principalDueAmount: number | null;
+  note: string | null;
+}
+
+/** ยอดค้าง/ยอดตายรวมของลูกหนี้หนึ่งคน */
+export interface ArrearsGroup {
+  debtorId: string;
+  debtorName: string;
+  phone: string | null;
+  total: number;
+  rows: ArrearsRow[];
 }
 
 @Injectable()
@@ -329,27 +351,10 @@ export class DashboardService {
       relations: { debtor: true },
     });
 
-    interface Row {
-      loanId: string;
-      contractNumber: string | null;
-      status: LoanStatus;
-      amount: number;
-      outstandingPrincipal: number;
-      installmentAmount: number | null;
-      principalDueDate: string | null;
-      principalDueAmount: number | null;
-      note: string | null;
-    }
-    interface Group {
-      debtorId: string;
-      debtorName: string;
-      phone: string | null;
-      total: number;
-      rows: Row[];
-    }
-
-    const collect = (picked: { loan: Loan; amount: number }[]): Group[] => {
-      const groups = new Map<string, Group>();
+    const collect = (
+      picked: { loan: Loan; amount: number }[],
+    ): ArrearsGroup[] => {
+      const groups = new Map<string, ArrearsGroup>();
       for (const { loan, amount } of picked) {
         let g = groups.get(loan.debtorId);
         if (!g) {
@@ -396,7 +401,8 @@ export class DashboardService {
 
     const overdueGroups = collect(overdue);
     const deadGroups = collect(dead);
-    const sumOf = (gs: Group[]) => round2(gs.reduce((s, g) => s + g.total, 0));
+    const sumOf = (gs: ArrearsGroup[]) =>
+      round2(gs.reduce((s, g) => s + g.total, 0));
 
     return {
       arrears: {

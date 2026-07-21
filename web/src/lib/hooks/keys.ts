@@ -5,7 +5,10 @@ import type { QueryClient } from '@tanstack/react-query';
  * (react-query invalidate แบบ prefix: invalidate ['debtor'] จะล้าง ['debtor', id] ทุกตัว)
  */
 export const qk = {
-  today: ['dashboard', 'today'] as const,
+  today: (date?: string) => ['dashboard', 'today', date ?? ''] as const,
+  arrears: ['dashboard', 'arrears'] as const,
+  bill: (debtorId: string, date: string) =>
+    ['dashboard', 'bill', debtorId, date] as const,
   summary: ['dashboard', 'summary'] as const,
   debtors: ['debtors'] as const,
   debtor: (id: string) => ['debtor', id] as const,
