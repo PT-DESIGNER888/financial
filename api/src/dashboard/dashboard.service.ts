@@ -59,6 +59,29 @@ export interface ArrearsRow {
   note: string | null;
 }
 
+/**
+ * ยอดกู้นี้เข้าช่องไหนของหน้ายอดค้าง (null = ไม่เข้าหน้านี้)
+ * - ยอดปกติ → ดอกที่ค้างสะสม
+ * - ผ่อนงวด (จบต้นจบดอก) → เฉพาะ "งวดที่ค้าง" เท่านั้น ไม่ใช่ยอดตาย
+ *   งวดที่ยังไม่ถึงกำหนดเป็นแผนผ่อนปกติ ดูที่หน้าสัญญา/ลูกหนี้
+ * - ยอดตาย → ยอดที่ตรึงไว้ทั้งก้อน
+ */
+export function arrearsBucket(
+  loan: Pick<Loan, 'status' | 'arrears' | 'deadBalance'>,
+  /** ยอดงวดที่ถึงกำหนดแล้วยังไม่จ่าย (เฉพาะผ่อนงวด) */
+  dueNow: number,
+): { bucket: 'ARREARS' | 'DEAD'; amount: number } | null {
+  if (loan.status === LoanStatus.ACTIVE)
+    return loan.arrears > 0
+      ? { bucket: 'ARREARS', amount: loan.arrears }
+      : null;
+  if (loan.status === LoanStatus.INSTALLMENT)
+    return dueNow > 0 ? { bucket: 'ARREARS', amount: dueNow } : null;
+  if (loan.status === LoanStatus.DEAD && (loan.deadBalance ?? 0) > 0)
+    return { bucket: 'DEAD', amount: loan.deadBalance ?? 0 };
+  return null;
+}
+
 /** ยอดค้าง/ยอดตายรวมของลูกหนี้หนึ่งคน */
 export interface ArrearsGroup {
   debtorId: string;
@@ -386,17 +409,17 @@ export class DashboardService {
     const overdue: { loan: Loan; amount: number }[] = [];
     const dead: { loan: Loan; amount: number }[] = [];
     for (const loan of loans) {
-      if (loan.status === LoanStatus.ACTIVE) {
-        if (loan.arrears > 0) overdue.push({ loan, amount: loan.arrears });
-      } else if (loan.status === LoanStatus.INSTALLMENT) {
-        const dueNow =
-          this.loansService.buildInstallmentSchedule(loan, today)?.dueNow ?? 0;
-        if (dueNow > 0) overdue.push({ loan, amount: dueNow });
-        if ((loan.deadBalance ?? 0) > 0)
-          dead.push({ loan, amount: loan.deadBalance ?? 0 });
-      } else if ((loan.deadBalance ?? 0) > 0) {
-        dead.push({ loan, amount: loan.deadBalance ?? 0 });
-      }
+      const dueNow =
+        loan.status === LoanStatus.INSTALLMENT
+          ? (this.loansService.buildInstallmentSchedule(loan, today)?.dueNow ??
+            0)
+          : 0;
+      const slot = arrearsBucket(loan, dueNow);
+      if (!slot) continue;
+      (slot.bucket === 'DEAD' ? dead : overdue).push({
+        loan,
+        amount: slot.amount,
+      });
     }
 
     const overdueGroups = collect(overdue);

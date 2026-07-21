@@ -13,7 +13,7 @@ import {
 import { PageSkeleton } from '@/components/skeleton';
 import { baht, thaiDate } from '@/lib/format';
 import { useArrears } from '@/lib/hooks/useDashboard';
-import type { ArrearsDebtor, ArrearsSection } from '@/lib/types';
+import type { ArrearsDebtor, ArrearsRow, ArrearsSection } from '@/lib/types';
 
 export default function ArrearsPage() {
   return (
@@ -269,8 +269,11 @@ function DebtorCard({
             className="flex items-start justify-between gap-3 py-2.5"
           >
             <div className="min-w-0">
-              <p className="truncate text-sm text-slate-600 dark:text-gray-300">
-                {r.contractNumber ?? 'ไม่มีเลขที่สัญญา'}
+              <p className="flex flex-wrap items-center gap-1.5 text-sm text-slate-600 dark:text-gray-300">
+                <span className="truncate">
+                  {r.contractNumber ?? 'ไม่มีเลขที่สัญญา'}
+                </span>
+                <KindChip status={r.status} />
               </p>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-400">
                 {r.status === 'ACTIVE'
@@ -302,5 +305,27 @@ function DebtorCard({
         ))}
       </ul>
     </article>
+  );
+}
+
+/** ป้ายบอกชนิดยอด — กันสับสนระหว่างผ่อนงวด (จบต้นจบดอก) กับยอดตาย */
+function KindChip({ status }: { status: ArrearsRow['status'] }) {
+  const style: Partial<Record<ArrearsRow['status'], string>> = {
+    ACTIVE: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
+    INSTALLMENT: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-400',
+    DEAD: 'bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-gray-400',
+  };
+  const label: Partial<Record<ArrearsRow['status'], string>> = {
+    ACTIVE: 'ดอกค้าง',
+    INSTALLMENT: 'ผ่อนงวด',
+    DEAD: 'ยอดตาย',
+  };
+  if (!label[status]) return null;
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${style[status]}`}
+    >
+      {label[status]}
+    </span>
   );
 }
