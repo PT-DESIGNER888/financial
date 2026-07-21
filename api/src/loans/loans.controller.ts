@@ -37,7 +37,8 @@ type Cycle = LoanCycle;
 class CreateLoanDto {
   @IsString() @IsNotEmpty() debtorId: string;
 
-  /** REVOLVING = ดอกลอย/คงที่ (ค่าเริ่มต้น), INSTALLMENT = ผ่อนเป็นงวด */
+  /** REVOLVING = ดอกลอย/คงที่ (ค่าเริ่มต้น), INSTALLMENT = ผ่อนเป็นงวด,
+   *  DEAD = ยอดตายคีย์มือ (ตรึงยอดที่กรอก ไม่คิดดอก) */
   @IsOptional()
   @IsIn(Object.values(LoanKind))
   type?: LoanKind;
@@ -58,16 +59,28 @@ class CreateLoanDto {
   @Min(0)
   arrears?: number;
 
-  /** อัตราดอก — ดอกลอย/คงที่: %/รอบ, ลดต้นลดดอก: %/งวดจากต้นคงเหลือ */
+  /** อัตราดอก — ดอกลอย/คงที่: %/รอบ, ลดต้นลดดอก: %/งวดจากต้นคงเหลือ
+   *  (ยอดตายคีย์มือไม่ต้องกรอก — ไม่คิดดอก) */
   @ValidateIf(
-    (o: CreateLoanDto) => o.type !== 'INSTALLMENT' || o.amortized === true,
+    (o: CreateLoanDto) =>
+      o.type !== LoanKind.DEAD &&
+      (o.type !== LoanKind.INSTALLMENT || o.amortized === true),
   )
   @Type(() => Number)
   @IsNumber()
   @IsPositive()
   interestRatePercent?: number;
 
-  @IsIn(CYCLES) cycle: Cycle;
+  /** ยอดตายคีย์มือ: งวดที่ตกลงผ่อน (ไม่กรอก = ทยอยคืนเมื่อไหร่ก็ได้) */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
+  installmentAmount?: number;
+
+  @ValidateIf((o: CreateLoanDto) => o.type !== LoanKind.DEAD)
+  @IsIn(CYCLES)
+  cycle: Cycle;
 
   @IsOptional()
   @IsIn(Object.values(InterestMode))
@@ -152,6 +165,19 @@ class EditLoanDto {
   @IsOptional()
   @IsIn(REVOLVING_CYCLES)
   cycle?: RevolvingCycle;
+
+  /** นัดคืนต้น: วันที่ตกลงจะเอาเงินก้อนมาตัดต้น (ล้างนัดใช้ clearPrincipalDue) */
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) principalDueDate?: string;
+
+  /** นัดคืนต้น: ยอดที่ตกลงจะคืน */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  principalDueAmount?: number;
+
+  /** true = ล้างนัดคืนต้นทิ้ง */
+  @IsOptional() @IsBoolean() clearPrincipalDue?: boolean;
 
   @IsOptional() @IsString() note?: string;
 }
@@ -244,7 +270,12 @@ export class LoansController {
 
   @Patch(':id')
   edit(@Param('id') id: string, @Body() dto: EditLoanDto) {
-    return this.loans.editTerms(id, dto);
+    const { clearPrincipalDue, ...rest } = dto;
+    return this.loans.editTerms(id, {
+      ...rest,
+      principalDueDate: clearPrincipalDue ? null : dto.principalDueDate,
+      principalDueAmount: clearPrincipalDue ? null : dto.principalDueAmount,
+    });
   }
 
   @Post(':id/adjust')

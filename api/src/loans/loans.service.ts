@@ -119,7 +119,8 @@ export class LoansService {
     )
       return false;
     if (loan.status === LoanStatus.DEAD) {
-      if (!loan.deadDate) return false;
+      // ยอดตายที่ไม่ได้ตกลงงวดตายตัว — ทยอยคืนเมื่อไหร่ก็ได้ ไม่โผล่เป็นรายการวันนี้
+      if (!loan.deadDate || !loan.installmentAmount) return false;
       const diff = diffDays(loan.deadDate, d);
       return diff > 0 && diff % 10 === 0;
     }
@@ -134,11 +135,20 @@ export class LoansService {
       }
       return false;
     }
-    if (loan.cycles) return loan.cycles.some((c) => c.dueDate === d);
+    if (loan.cycle === LoanCycle.MONTHLY) return false;
+    if (loan.cycles?.length) {
+      if (loan.cycles.some((c) => c.dueDate === d)) return true;
+      // วันในอนาคตที่ยังไม่ได้ gen แถว (ดูล่วงหน้า) — ฉายต่อจากรอบสุดท้ายตามรอบเก็บ
+      const last = loan.cycles.reduce(
+        (m, c) => (c.dueDate > m ? c.dueDate : m),
+        '',
+      );
+      const ahead = diffDays(last, d);
+      return ahead > 0 && ahead % cycleStep[loan.cycle] === 0;
+    }
     // fallback (ยังไม่โหลดแถวรอบดอก): สูตรเดิมตามรอบเก็บ
     const diff = diffDays(loan.startDate, d);
     if (diff <= 0) return false;
-    if (loan.cycle === LoanCycle.MONTHLY) return false;
     return diff % cycleStep[loan.cycle] === 0;
   }
 
@@ -173,6 +183,45 @@ export class LoansService {
       dueDate: row.dueDate,
       computedInterest: this.interestPerCycle(loan),
       interestOverride: row.interestOverride,
+      interestDue,
+      interestPaid: round2(interestPaid),
+      interestRemaining: Math.max(0, round2(interestDue - interestPaid)),
+    };
+  }
+
+  /**
+   * สถานะดอกของรอบที่ครบกำหนด "วันที่ d" — ดอกที่ต้องเก็บ / จ่ายมาแล้วในรอบ / เหลืออีก
+   * นับเงินที่จ่ายภายในช่วงรอบ (หลังรอบก่อนหน้า ถึงวันครบกำหนด) จึงรองรับทั้ง
+   * จ่ายล่วงหน้าและแบ่งจ่ายหลายครั้งในรอบเดียว — null = วันนั้นไม่ใช่วันครบกำหนด
+   */
+  cycleStatusOn(loan: Loan, d: string) {
+    if (loan.status !== LoanStatus.ACTIVE || loan.cycle === LoanCycle.MONTHLY)
+      return null;
+    const rows = [...(loan.cycles ?? [])].sort((a, b) =>
+      a.dueDate.localeCompare(b.dueDate),
+    );
+    const idx = rows.findIndex((r) => r.dueDate === d);
+    let interestDue: number;
+    let windowStart: string;
+    if (idx === -1) {
+      // รอบในอนาคตที่ยังไม่ได้สร้างแถว (ดูล่วงหน้า) — ฉายจากรอบเก็บปัจจุบัน
+      if (!this.isDueOn(loan, d)) return null;
+      interestDue = this.interestPerCycle(loan);
+      windowStart = addDays(d, -cycleStep[loan.cycle]);
+    } else {
+      interestDue = this.cycleInterest(loan, rows[idx]);
+      windowStart =
+        idx > 0 ? rows[idx - 1].dueDate : addDays(loan.startDate, -1);
+    }
+    const interestPaid = (loan.payments ?? [])
+      .filter(
+        (p) =>
+          !p.onDeadLoan &&
+          diffDays(windowStart, p.paidDate) > 0 &&
+          diffDays(p.paidDate, d) >= 0,
+      )
+      .reduce((s, p) => s + p.interestPaid, 0);
+    return {
       interestDue,
       interestPaid: round2(interestPaid),
       interestRemaining: Math.max(0, round2(interestDue - interestPaid)),
@@ -568,6 +617,8 @@ export class LoansService {
     cycle: LoanCycle;
     interestMode?: InterestMode;
     installmentCount?: number;
+    /** ยอดตายคีย์มือ: งวดผ่อนที่ตกลง (ไม่ระบุ = ไม่มีกำหนดตายตัว) */
+    installmentAmount?: number;
     totalInterest?: number;
     installmentTotal?: number;
     amortized?: boolean;
@@ -580,6 +631,10 @@ export class LoansService {
     // ยอดผ่อนงวด: กำหนดยอดเต็ม (ต้น+ดอกรวม) แล้วหารเป็น N งวดเท่ากันตั้งแต่ต้น
     if (input.type === LoanKind.INSTALLMENT) {
       return this.createInstallment(input);
+    }
+    // ยอดตายคีย์มือ: ตรึงยอดที่กรอก ไม่คิดดอก
+    if (input.type === LoanKind.DEAD) {
+      return this.createDead(input);
     }
     if (
       input.cycle !== LoanCycle.DAILY &&
@@ -622,6 +677,45 @@ export class LoansService {
     // สร้างรอบดอกล่วงหน้า (วันครบกำหนดรอบแรก = วันเปิดยอด + 1 รอบ)
     await this.ensureCycles(saved);
     return saved;
+  }
+
+  /**
+   * เปิดยอดตายตรงๆ (คีย์มือ) — ยอดที่กรอกคือยอดคงเหลือที่ตรึงไว้ ไม่คิดดอกเพิ่ม
+   * installmentAmount ไม่บังคับ: ไม่ระบุ = ทยอยคืนเมื่อไหร่ก็ได้ ไม่มีกำหนดตายตัว
+   */
+  private async createDead(input: {
+    debtorId: string;
+    principalOriginal: number;
+    installmentAmount?: number;
+    startDate?: string;
+    note?: string;
+    fromCapital?: boolean;
+  }): Promise<Loan> {
+    if (input.principalOriginal <= 0)
+      throw new BadRequestException('ยอดตายต้องมากกว่า 0');
+    if (input.installmentAmount !== undefined && input.installmentAmount <= 0)
+      throw new BadRequestException('งวดผ่อนต้องมากกว่า 0');
+    const startDate = input.startDate ?? todayStr();
+    const loan = this.loans.create({
+      debtorId: input.debtorId,
+      contractNumber: await this.nextContractNumber(startDate),
+      status: LoanStatus.DEAD,
+      cycle: LoanCycle.TEN_DAY,
+      interestMode: InterestMode.FLAT,
+      principalOriginal: input.principalOriginal,
+      outstandingPrincipal: input.principalOriginal,
+      interestRatePercent: 0,
+      arrears: 0,
+      startDate,
+      accruedThrough: startDate,
+      deadDate: startDate,
+      deadBalance: input.principalOriginal,
+      installmentAmount: input.installmentAmount ?? null,
+      note: input.note ?? null,
+      // ยอดตายคีย์มือ = ยอดเก่าที่ปล่อยไปก่อนแล้ว ไม่หักเงินสดในมือซ้ำ
+      fromCapital: input.fromCapital ?? false,
+    });
+    return this.loans.save(loan);
   }
 
   /** ตรวจ + สร้างแผนผ่อนจาก input (ใช้ทั้ง preview และเปิดยอดจริง) */
@@ -798,12 +892,14 @@ export class LoansService {
     return loan;
   }
 
-  /** แก้เงื่อนไขยอดกู้: อัตราดอก / รอบเก็บ / หมายเหตุ */
+  /** แก้เงื่อนไขยอดกู้: อัตราดอก / รอบเก็บ / นัดคืนต้น / หมายเหตุ */
   async editTerms(
     id: string,
     input: {
       interestRatePercent?: number;
       cycle?: RevolvingCycle;
+      principalDueDate?: string | null;
+      principalDueAmount?: number | null;
       note?: string | null;
     },
   ): Promise<Loan> {
@@ -811,6 +907,8 @@ export class LoansService {
     const before = {
       interestRatePercent: loan.interestRatePercent,
       cycle: loan.cycle,
+      principalDueDate: loan.principalDueDate,
+      principalDueAmount: loan.principalDueAmount,
       note: loan.note,
     };
     const patch: Partial<Loan> = {};
@@ -820,6 +918,16 @@ export class LoansService {
       patch.interestRatePercent = input.interestRatePercent;
     }
     if (input.cycle !== undefined) patch.cycle = input.cycle;
+    if (input.principalDueDate !== undefined)
+      patch.principalDueDate = input.principalDueDate;
+    if (input.principalDueAmount !== undefined) {
+      if (input.principalDueAmount !== null && input.principalDueAmount < 0)
+        throw new BadRequestException('ยอดนัดคืนต้นต้องไม่ติดลบ');
+      patch.principalDueAmount =
+        input.principalDueAmount === null
+          ? null
+          : round2(input.principalDueAmount);
+    }
     if (input.note !== undefined) patch.note = input.note;
     await this.loans.update(id, patch);
     // เปลี่ยนรอบเก็บ: ลบรอบดอกที่ยังไม่สะสม แล้วให้ gen ใหม่ตามรอบใหม่

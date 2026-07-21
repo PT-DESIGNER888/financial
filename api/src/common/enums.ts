@@ -44,6 +44,8 @@ export const LoanKind = {
   REVOLVING: 'REVOLVING',
   /** ผ่อนเป็นงวดตามแผน */
   INSTALLMENT: 'INSTALLMENT',
+  /** ยอดตายคีย์มือ — ตรึงยอดที่กรอก ไม่คิดดอก ทยอยผ่อนคืนแบบไม่มีกำหนดตายตัว */
+  DEAD: 'DEAD',
 } as const;
 export type LoanKind = (typeof LoanKind)[keyof typeof LoanKind];
 

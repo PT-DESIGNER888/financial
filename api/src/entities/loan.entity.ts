@@ -112,6 +112,14 @@ export class Loan {
   @Column({ type: 'date', nullable: true })
   firstDueDate: string | null;
 
+  /** นัดคืนต้น: วันที่ลูกหนี้ตกลงจะเอาเงินก้อนมาตัดต้น (จดไว้ ไม่ผูกรอบดอก) */
+  @Column({ type: 'date', nullable: true })
+  principalDueDate: string | null;
+
+  /** นัดคืนต้น: ยอดที่ตกลงจะคืน — null = ยังไม่ระบุยอด */
+  @Column({ ...money, nullable: true })
+  principalDueAmount: number | null;
+
   /** ปัดยอดต่องวดเป็นบาทเต็ม (เศษไปรวมงวดสุดท้าย) */
   @Column({ default: false })
   roundInstallments: boolean;
