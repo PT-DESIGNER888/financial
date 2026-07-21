@@ -824,17 +824,20 @@ export class LoansService {
     return this.loans.save(loan);
   }
 
-  /** แปลงเป็นยอดตาย: หยุดดอก ตรึงยอด (ต้น+ค้าง) ตกลงงวดผ่อน/10วัน */
-  async convertToDead(id: string, installmentAmount: number): Promise<Loan> {
+  /**
+   * แปลงเป็นยอดตาย: หยุดดอก ตรึงยอด (ต้น+ค้าง)
+   * งวดผ่อนไม่บังคับ — ไม่ระบุ = ลูกหนี้ทยอยคืนเมื่อไหร่ก็ได้ ไม่มีกำหนดตายตัว
+   */
+  async convertToDead(id: string, installmentAmount?: number): Promise<Loan> {
     const loan = await this.findOne(id);
     if (loan.status !== LoanStatus.ACTIVE)
       throw new BadRequestException('แปลงได้เฉพาะยอดปกติ');
-    if (installmentAmount <= 0)
+    if (installmentAmount !== undefined && installmentAmount <= 0)
       throw new BadRequestException('งวดผ่อนต้องมากกว่า 0');
     loan.status = LoanStatus.DEAD;
     loan.deadDate = todayStr();
     loan.deadBalance = round2(loan.outstandingPrincipal + loan.arrears);
-    loan.installmentAmount = installmentAmount;
+    loan.installmentAmount = installmentAmount ?? null;
     await this.loans.update(loan.id, {
       status: loan.status,
       deadDate: loan.deadDate,
@@ -846,8 +849,15 @@ export class LoansService {
       loanId: loan.id,
       debtorId: loan.debtorId,
       debtorName: loan.debtor?.name ?? null,
-      message: `แปลงเป็นยอดตาย (ตรึง ฿${loan.deadBalance}, ผ่อน ฿${installmentAmount}/10วัน)`,
-      meta: { deadBalance: loan.deadBalance, installmentAmount },
+      message: `แปลงเป็นยอดตาย (ตรึง ฿${loan.deadBalance}, ${
+        installmentAmount
+          ? `ผ่อน ฿${installmentAmount}/10วัน`
+          : 'ทยอยคืนไม่มีกำหนด'
+      })`,
+      meta: {
+        deadBalance: loan.deadBalance,
+        installmentAmount: installmentAmount ?? null,
+      },
     });
     return loan;
   }

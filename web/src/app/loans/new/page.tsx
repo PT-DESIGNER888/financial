@@ -65,6 +65,8 @@ function NewLoanView() {
   const [kind, setKind] = useState<Kind>(LoanKind.INSTALLMENT);
 
   const debtor = debtors?.find((d) => d.id === debtorId);
+  const done = () =>
+    router.push(debtorId ? `/debtors/${debtorId}` : '/loans');
 
   return (
     <div className="space-y-5">
@@ -109,12 +111,17 @@ function NewLoanView() {
               {
                 value: LoanKind.INSTALLMENT,
                 label: 'ผ่อนเป็นงวด',
-                hint: 'รายเดือน / รายสัปดาห์',
+                hint: 'รายเดือน / สัปดาห์',
               },
               {
                 value: LoanKind.REVOLVING,
                 label: 'ดอกลอย / คงที่',
-                hint: 'รายวัน / 7 วัน / 10 วัน',
+                hint: 'รายวัน / 7 / 10 วัน',
+              },
+              {
+                value: LoanKind.DEAD,
+                label: 'ยอดตาย',
+                hint: 'คีย์ยอดเอง ไม่คิดดอก',
               },
             ]}
           />
@@ -122,9 +129,11 @@ function NewLoanView() {
       </div>
 
       {kind === LoanKind.INSTALLMENT ? (
-        <InstallmentForm debtorId={debtorId} onDone={() => router.push(debtorId ? `/debtors/${debtorId}` : '/loans')} />
+        <InstallmentForm debtorId={debtorId} onDone={done} />
+      ) : kind === LoanKind.DEAD ? (
+        <DeadForm debtorId={debtorId} onDone={done} />
       ) : (
-        <RevolvingForm debtorId={debtorId} onDone={() => router.push(debtorId ? `/debtors/${debtorId}` : '/loans')} />
+        <RevolvingForm debtorId={debtorId} onDone={done} />
       )}
     </div>
   );
@@ -506,6 +515,136 @@ function PlanTable({
             })}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- ยอดตายคีย์มือ (ตรึงยอดที่กรอก ไม่คิดดอก) ---------- */
+
+function DeadForm({
+  debtorId,
+  onDone,
+}: {
+  debtorId: string;
+  onDone: () => void;
+}) {
+  const [startDate, setStartDate] = useState(todayISO());
+  const [balance, setBalance] = useState('');
+  const [hasInstallment, setHasInstallment] = useState(false);
+  const [installment, setInstallment] = useState('');
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+
+  const balanceNum = parseFloat(balance) || 0;
+  const installmentNum = parseFloat(installment) || 0;
+
+  const createLoan = useCreateLoan();
+  const submit = async () => {
+    setError('');
+    if (!debtorId) return setError('เลือกลูกหนี้ก่อน');
+    if (!(balanceNum > 0)) return setError('ยอดตายต้องมากกว่า 0');
+    if (hasInstallment && !(installmentNum > 0))
+      return setError('งวดผ่อนต้องมากกว่า 0');
+    try {
+      await createLoan.mutateAsync({
+        debtorId,
+        type: LoanKind.DEAD,
+        principalOriginal: balanceNum,
+        cycle: LoanCycle.TEN_DAY,
+        installmentAmount: hasInstallment ? installmentNum : undefined,
+        startDate,
+        note: note || undefined,
+      });
+      toast('บันทึกยอดตายแล้ว');
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ');
+    }
+  };
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
+      <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+        <Field label="วันที่ตั้งยอด">
+          <DatePicker value={startDate} onChange={setStartDate} />
+        </Field>
+
+        <FormInput
+          label="ยอดตายคงเหลือ (บาท) *"
+          hint="ยอดที่ตกลงกันไว้ — ระบบตรึงไว้เท่านี้ ไม่คิดดอกเพิ่ม"
+          type="number"
+          inputMode="decimal"
+          align="right"
+          value={balance}
+          onChange={(e) => setBalance(e.target.value)}
+        />
+
+        <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={hasInstallment}
+            onChange={(e) => setHasInstallment(e.target.checked)}
+          />
+          ตกลงงวดผ่อนไว้ (ทุก 10 วัน)
+        </label>
+        {hasInstallment ? (
+          <FormInput
+            label="งวดละ (บาท)"
+            type="number"
+            inputMode="decimal"
+            align="right"
+            value={installment}
+            onChange={(e) => setInstallment(e.target.value)}
+          />
+        ) : (
+          <p className="rounded-lg bg-slate-100 p-3 text-xs leading-relaxed text-slate-600 dark:bg-gray-800 dark:text-gray-300">
+            ไม่ตกลงงวด = ลูกหนี้ทยอยคืนเมื่อไหร่ก็ได้ ยอดนี้จะไม่ขึ้นในหน้าเก็บวันนี้
+            แต่ดูได้ที่หน้า &ldquo;ยอดค้าง&rdquo; และรับเงินจากหน้าลูกหนี้
+          </p>
+        )}
+
+        <FormInput
+          label="หมายเหตุ"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+
+        {error && <p className="text-sm text-red-500">{error}</p>}
+        <Button
+          onClick={submit}
+          disabled={createLoan.isPending}
+          className="w-full"
+        >
+          บันทึกยอดตาย
+        </Button>
+      </div>
+
+      <div>
+        {balanceNum > 0 ? (
+          <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+              สรุปยอด
+            </h2>
+            <SummaryRow label="ยอดตายคงเหลือ" value={`฿${baht(balanceNum)}`} bold />
+            <SummaryRow label="ดอกเบี้ย" value="ไม่คิดเพิ่ม" />
+            <SummaryRow
+              label="งวดผ่อน"
+              value={
+                hasInstallment && installmentNum > 0
+                  ? `฿${baht(installmentNum)} ทุก 10 วัน`
+                  : 'ไม่มีกำหนดตายตัว'
+              }
+            />
+            <p className="pt-1 text-xs text-gray-400 dark:text-gray-500">
+              เงินที่รับเข้ามาจะหักยอดตายตรงๆ ทุกบาท จนกว่าจะหมด
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400 dark:border-gray-700 dark:text-gray-500">
+            กรอกยอดตายที่ตกลงไว้ — ระบบจะตรึงยอดนี้โดยไม่คิดดอก
+          </div>
+        )}
       </div>
     </div>
   );

@@ -31,6 +31,8 @@ export type RevolvingCycle = (typeof REVOLVING_CYCLES)[number];
 export const LoanKind = {
   REVOLVING: 'REVOLVING',
   INSTALLMENT: 'INSTALLMENT',
+  /** ยอดตายคีย์มือ — ตรึงยอดที่กรอก ไม่คิดดอก */
+  DEAD: 'DEAD',
 } as const;
 export type LoanKind = (typeof LoanKind)[keyof typeof LoanKind];
 

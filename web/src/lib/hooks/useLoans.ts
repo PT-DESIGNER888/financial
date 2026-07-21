@@ -20,7 +20,7 @@ export function useAllLoans() {
 
 export interface CreateLoanInput {
   debtorId: string;
-  type?: 'REVOLVING' | 'INSTALLMENT';
+  type?: 'REVOLVING' | 'INSTALLMENT' | 'DEAD';
   principalOriginal: number;
   interestRatePercent?: number;
   cycle: LoanCycle;
@@ -28,6 +28,8 @@ export interface CreateLoanInput {
   outstandingPrincipal?: number;
   arrears?: number;
   installmentCount?: number;
+  /** ยอดตายคีย์มือ: งวดที่ตกลงผ่อน (ไม่ส่ง = ไม่มีกำหนดตายตัว) */
+  installmentAmount?: number;
   totalInterest?: number;
   amortized?: boolean;
   fee?: number;
@@ -84,7 +86,14 @@ export function useCreateLoan() {
 export function useConvertDead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, installmentAmount }: { id: string; installmentAmount: number }) =>
+    mutationFn: ({
+      id,
+      installmentAmount,
+    }: {
+      id: string;
+      /** ไม่ส่ง = ทยอยคืนเมื่อไหร่ก็ได้ ไม่มีกำหนดตายตัว */
+      installmentAmount?: number;
+    }) =>
       api<Loan>(`/loans/${id}/dead`, {
         method: 'POST',
         body: JSON.stringify({ installmentAmount }),
@@ -136,6 +145,11 @@ export function useUpdateCycle() {
 export interface EditLoanInput {
   interestRatePercent?: number;
   cycle?: 'DAILY' | 'WEEKLY' | 'TEN_DAY';
+  /** นัดคืนต้น: วันที่ลูกหนี้ตกลงจะเอาเงินก้อนมาตัดต้น */
+  principalDueDate?: string;
+  principalDueAmount?: number;
+  /** true = ล้างนัดคืนต้นทิ้ง */
+  clearPrincipalDue?: boolean;
   note?: string;
 }
 

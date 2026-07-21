@@ -181,6 +181,13 @@ export function LoanCard({
             {baht(loan.principalOriginal)}
             {isInstallment && ` · ผ่อนรวม ฿${baht(loan.installmentTotal)}`}
           </p>
+          {loan.principalDueDate && (
+            <p className="mt-1.5 inline-flex rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+              นัดคืนต้น {thaiDate(loan.principalDueDate)}
+              {loan.principalDueAmount != null &&
+                ` · ฿${baht(loan.principalDueAmount)}`}
+            </p>
+          )}
         </div>
         {isOpen && (
           <div className="flex shrink-0 flex-wrap gap-2">
@@ -228,7 +235,11 @@ export function LoanCard({
         ) : loan.status === LoanStatus.DEAD ? (
           <>
             <Stat label="ยอดตายคงเหลือ" value={loan.deadBalance ?? 0} />
-            <Stat label="งวดผ่อน/10วัน" value={loan.installmentAmount ?? 0} />
+            {loan.installmentAmount ? (
+              <Stat label="งวดผ่อน/10วัน" value={loan.installmentAmount} />
+            ) : (
+              <StatText label="งวดผ่อน" value="ทยอยคืน ไม่มีกำหนด" />
+            )}
             <Stat
               label="ผ่อนแล้ว"
               value={payments

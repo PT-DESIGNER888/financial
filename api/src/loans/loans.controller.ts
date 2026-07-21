@@ -152,7 +152,12 @@ class PreviewLoanDto {
 }
 
 class ConvertDeadDto {
-  @Type(() => Number) @IsNumber() @IsPositive() installmentAmount: number;
+  /** ไม่ส่ง = ทยอยคืนเมื่อไหร่ก็ได้ ไม่มีกำหนดตายตัว */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
+  installmentAmount?: number;
 }
 
 class EditLoanDto {

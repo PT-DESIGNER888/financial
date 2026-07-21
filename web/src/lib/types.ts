@@ -107,6 +107,9 @@ export interface Loan {
   amortized: boolean;
   fee: number;
   firstDueDate: string | null;
+  /** นัดคืนต้น: วันที่ลูกหนี้ตกลงจะเอาเงินก้อนมาตัดต้น */
+  principalDueDate: string | null;
+  principalDueAmount: number | null;
   roundInstallments: boolean;
   note: string | null;
   payments?: Payment[];
