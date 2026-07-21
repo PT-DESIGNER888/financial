@@ -104,23 +104,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
       {/* Sidebar — desktop */}
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 flex-col border-r border-[#d7dce3] bg-white md:flex print:hidden dark:border-gray-800 dark:bg-gray-900">
-        <div className="flex items-center gap-3 px-5 pt-7 pb-6">
-          <BrandLogo size="lg" />
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-60 flex-col border-r border-[#d7dce3] bg-white md:flex print:hidden dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
+          <BrandLogo size="md" />
           <div className="min-w-0">
-            <p className="truncate text-base font-bold text-slate-900 dark:text-white">
+            <p className="truncate text-[15px] font-bold text-slate-900 dark:text-white">
               ระบบเงินกู้
             </p>
-            <p className="text-[13px] text-slate-500 dark:text-gray-400">
+            <p className="truncate text-xs text-slate-500 dark:text-gray-400">
               ดอกลอย · รายวัน / 10 วัน
             </p>
           </div>
         </div>
 
-        <nav className="flex-1 space-y-6 overflow-y-auto px-3 pb-4">
+        <nav className="flex-1 space-y-4 overflow-y-auto px-2.5 pb-4">
           {menu.map((g) => (
             <div key={g.group}>
-              <p className="mb-1.5 px-3 text-[13px] font-medium text-slate-400 dark:text-gray-500">
+              <p className="mb-1 px-2.5 text-xs font-medium text-slate-400 dark:text-gray-500">
                 {g.group}
               </p>
               <div className="space-y-0.5">
@@ -130,14 +130,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     <Link
                       key={t.href}
                       href={t.href}
-                      className={`flex items-center gap-3 rounded-xl px-3.5 py-3.5 text-base font-medium transition-colors ${
+                      className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[15px] font-medium transition-colors ${
                         isActive
                           ? 'bg-primary/10 text-primary'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white'
                       }`}
                     >
                       <t.Icon
-                        className={`size-6 shrink-0 ${isActive ? 'text-primary' : 'text-slate-400 dark:text-gray-500'}`}
+                        className={`size-5 shrink-0 ${isActive ? 'text-primary' : 'text-slate-400 dark:text-gray-500'}`}
                       />
                       {t.label}
                     </Link>
@@ -148,23 +148,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <div className="border-t border-slate-100 p-3 dark:border-gray-800">
+        <div className="border-t border-slate-100 p-2.5 dark:border-gray-800">
           <Link
             href="/settings"
-            className={`flex items-center gap-3 rounded-xl px-3.5 py-3.5 text-base font-medium transition-colors ${
+            className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[15px] font-medium transition-colors ${
               settingsActive
                 ? 'bg-primary/10 text-primary'
                 : 'text-slate-600 hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800'
             }`}
           >
-            <IconSettings className="size-6 text-slate-400 dark:text-gray-500" />
+            <IconSettings className="size-5 text-slate-400 dark:text-gray-500" />
             ตั้งค่า
           </Link>
         </div>
       </aside>
 
       {/* Content */}
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col md:pl-72 print:pl-0">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col md:pl-60 print:pl-0">
         <header className="sticky top-0 z-10 border-b border-[#d7dce3] bg-white print:hidden dark:border-gray-800 dark:bg-gray-900">
           <div className="flex items-center justify-between gap-3 px-4 py-3.5 md:px-10 lg:px-12">
             <div className="min-w-0">
