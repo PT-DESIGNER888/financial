@@ -212,6 +212,9 @@ class AdjustLoanDto {
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) deadBalance?: number;
 
+  /** ยอดหนี้สูญ (สถานะ BAD_DEBT) — แก้ยอดขาดทุนตรงๆ */
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) badDebtLoss?: number;
+
   @IsString() @IsNotEmpty() reason: string;
 }
 

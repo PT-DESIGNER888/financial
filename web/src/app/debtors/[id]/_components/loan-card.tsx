@@ -101,6 +101,15 @@ export function LoanCard({
     loan.status === LoanStatus.ACTIVE ||
     loan.status === LoanStatus.DEAD ||
     loan.status === LoanStatus.INSTALLMENT;
+  const isBadDebt = loan.status === LoanStatus.BAD_DEBT;
+  // ยอดขาดทุนที่ยังเก็บไม่ได้ — คิดแบบเดียวกับฝั่ง API (lossOf)
+  const badDebtLoss =
+    loan.deadDate != null || loan.installmentCount != null
+      ? (loan.deadBalance ?? 0)
+      : loan.outstandingPrincipal + loan.arrears;
+  const recovered = payments
+    .filter((p) => p.onDeadLoan)
+    .reduce((s, p) => s + p.amount, 0);
 
   // โหลดตารางผ่อนของยอด INSTALLMENT เพื่อโชว์จำนวนงวดที่จ่ายแล้ว
   const { data: schedule } = useLoanSchedule(loan.id, isInstallment);
@@ -189,24 +198,22 @@ export function LoanCard({
             </p>
           )}
         </div>
-        {isOpen && (
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setShowManage((v) => !v)}
-              className="inline-flex min-h-12 items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2.5 text-[15px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-            >
-              <IconSettings className="size-5" />
-              จัดการ
-            </button>
-            {onPay && (
-              <Button onClick={onPay}>
-                <IconReceive className="size-5" />
-                รับเงิน
-              </Button>
-            )}
-          </div>
-        )}
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setShowManage((v) => !v)}
+            className="inline-flex min-h-12 items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2.5 text-[15px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            <IconSettings className="size-5" />
+            จัดการ
+          </button>
+          {onPay && (isOpen || isBadDebt) && (
+            <Button onClick={onPay}>
+              <IconReceive className="size-5" />
+              {isBadDebt ? 'รับเงินคืน' : 'รับเงิน'}
+            </Button>
+          )}
+        </div>
       </div>
 
       <div
@@ -247,6 +254,20 @@ export function LoanCard({
                 .reduce((s, p) => s + p.amount, 0)}
               color="text-emerald-700 dark:text-emerald-400"
             />
+          </>
+        ) : isBadDebt ? (
+          <>
+            <Stat
+              label="ยอดหนี้สูญคงเหลือ"
+              value={badDebtLoss}
+              color="text-red-600 dark:text-red-400"
+            />
+            <Stat
+              label="เก็บคืนได้แล้ว"
+              value={recovered}
+              color="text-emerald-700 dark:text-emerald-400"
+            />
+            <Stat label="ต้นเดิม" value={loan.principalOriginal} />
           </>
         ) : (
           <>

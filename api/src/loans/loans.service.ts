@@ -233,6 +233,46 @@ export class LoansService {
     return loan.installmentCount != null;
   }
 
+  /** ยอดนี้ตรึงยอดคงเหลือไว้ก้อนเดียว (ยอดตาย/ผ่อนงวด) แทนที่จะแยกต้น/ค้าง */
+  private isFrozenBalance(loan: Loan): boolean {
+    return loan.deadDate != null || this.isInstallment(loan);
+  }
+
+  /**
+   * ยอดคงเหลือที่ยังเก็บไม่ได้ของยอดกู้ — ใช้เป็น "ยอดหนี้สูญ" เมื่อสถานะ BAD_DEBT
+   * ยอดตาย/ผ่อนงวดดู deadBalance ที่ตรึงไว้, ยอดปกติดู ต้นคงเหลือ + ยอดค้าง
+   */
+  lossOf(loan: Loan): number {
+    return this.isFrozenBalance(loan)
+      ? (loan.deadBalance ?? 0)
+      : round2(loan.outstandingPrincipal + loan.arrears);
+  }
+
+  /**
+   * ตั้งยอดคงเหลือของยอดหนี้สูญเป็นตัวเลขที่ต้องการ (แก้เอง / เก็บคืนได้บางส่วน)
+   * เขียนลงฟิลด์ที่ระบบใช้คิดยอดขาดทุนให้อัตโนมัติ — ยอดปกติหักยอดค้างเก่าก่อน
+   * ตามธรรมเนียมเดียวกับการรับชำระ แล้วค่อยลดต้น
+   * หมายเหตุ: ไม่บันทึกลงฐานข้อมูลเอง — ให้ applyBalances เป็นคนเขียน
+   */
+  setLoss(loan: Loan, amount: number): void {
+    const target = Math.max(0, round2(amount));
+    if (this.isFrozenBalance(loan)) {
+      loan.deadBalance = target;
+      return;
+    }
+    const cut = round2(this.lossOf(loan) - target);
+    if (cut < 0) {
+      loan.outstandingPrincipal = round2(loan.outstandingPrincipal - cut);
+      return;
+    }
+    const fromArrears = Math.min(loan.arrears, cut);
+    loan.arrears = round2(loan.arrears - fromArrears);
+    loan.outstandingPrincipal = Math.max(
+      0,
+      round2(loan.outstandingPrincipal - (cut - fromArrears)),
+    );
+  }
+
   /**
    * ตารางผ่อน (amortization schedule) ของยอดผ่อนงวด
    * แต่ละงวดเท่ากัน (งวดสุดท้ายซับเศษ), จัดสรรเงินที่ผ่อนมาแล้วแบบไล่งวด
@@ -962,6 +1002,8 @@ export class LoansService {
       outstandingPrincipal?: number;
       arrears?: number;
       deadBalance?: number;
+      /** ยอดหนี้สูญ (สถานะ BAD_DEBT) — แก้ยอดขาดทุนตรงๆ */
+      badDebtLoss?: number;
       reason: string;
     },
   ): Promise<Loan> {
@@ -973,7 +1015,13 @@ export class LoansService {
       arrears: loan.arrears,
       deadBalance: loan.deadBalance,
     };
-    if (
+    if (loan.status === LoanStatus.BAD_DEBT) {
+      if (input.badDebtLoss === undefined)
+        throw new BadRequestException('ยอดหนี้สูญให้ปรับ badDebtLoss');
+      if (input.badDebtLoss < 0)
+        throw new BadRequestException('ยอดหนี้สูญต้องไม่ติดลบ');
+      this.setLoss(loan, input.badDebtLoss);
+    } else if (
       loan.status === LoanStatus.DEAD ||
       loan.status === LoanStatus.INSTALLMENT
     ) {
@@ -1057,10 +1105,7 @@ export class LoansService {
       loan.status === LoanStatus.BAD_DEBT
     )
       throw new BadRequestException('ยอดนี้ปิด/ตัดหนี้สูญไปแล้ว');
-    const loss =
-      loan.status === LoanStatus.DEAD || loan.status === LoanStatus.INSTALLMENT
-        ? (loan.deadBalance ?? 0)
-        : round2(loan.outstandingPrincipal + loan.arrears);
+    const loss = this.lossOf(loan);
     loan.status = LoanStatus.BAD_DEBT;
     loan.closedAt = todayStr();
     await this.loans.update(id, {

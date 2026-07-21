@@ -49,10 +49,16 @@ export class PaymentsService {
     interestDueOverride?: number,
   ) {
     const loan = await this.loansService.findOne(loanId);
+    // ยอดหนี้สูญที่เก็บคืนได้ทีหลัง รับเป็นเงินก้อนเดียวเหมือนยอดตาย (หักยอดขาดทุนลง)
     const frozen =
-      loan.status === LoanStatus.DEAD || loan.status === LoanStatus.INSTALLMENT;
+      loan.status === LoanStatus.DEAD ||
+      loan.status === LoanStatus.INSTALLMENT ||
+      loan.status === LoanStatus.BAD_DEBT;
     if (frozen) {
-      const principalBalance = loan.deadBalance ?? 0;
+      const principalBalance =
+        loan.status === LoanStatus.BAD_DEBT
+          ? this.loansService.lossOf(loan)
+          : (loan.deadBalance ?? 0);
       const principalPaid = Math.min(amount, principalBalance);
       return {
         arrearsPaid: 0,
@@ -125,10 +131,6 @@ export class PaymentsService {
     let loan = await this.loansService.findOne(input.loanId);
     if (loan.status === LoanStatus.CLOSED)
       throw new BadRequestException('ยอดนี้ปิดแล้ว');
-    if (loan.status === LoanStatus.BAD_DEBT)
-      throw new BadRequestException(
-        'ยอดนี้ตัดหนี้สูญแล้ว — เปิดยอดคืนก่อนจึงรับชำระได้',
-      );
     if (input.amount <= 0)
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
 
@@ -193,9 +195,20 @@ export class PaymentsService {
         'เลือก "ลดเงินต้น" ไว้ — ยอดทั้งหมดต้องเป็นตัดเงินต้น',
       );
 
+    // เก็บคืนได้จากยอดที่ตัดหนี้สูญไปแล้ว — หักยอดขาดทุนลง ไม่ต้องเปิดยอดคืน
+    const recovering = loan.status === LoanStatus.BAD_DEBT;
     const frozen =
-      loan.status === LoanStatus.DEAD || loan.status === LoanStatus.INSTALLMENT;
-    if (frozen) {
+      recovering ||
+      loan.status === LoanStatus.DEAD ||
+      loan.status === LoanStatus.INSTALLMENT;
+    if (recovering) {
+      if (arrearsPaid || interestPaid)
+        throw new BadRequestException('ยอดหนี้สูญรับเป็นเงินคืนอย่างเดียว');
+      const loss = this.loansService.lossOf(loan);
+      if (principalPaid > loss)
+        throw new BadRequestException('เกินยอดหนี้สูญคงเหลือ');
+      this.loansService.setLoss(loan, round2(loss - principalPaid));
+    } else if (frozen) {
       if (arrearsPaid || interestPaid)
         throw new BadRequestException(
           'ยอดตาย/ผ่อนงวดรับเป็นเงินผ่อนอย่างเดียว',
@@ -248,7 +261,13 @@ export class PaymentsService {
     if (!payment) throw new NotFoundException('ไม่พบรายการ');
     const loan = await this.loansService.findOne(payment.loanId);
 
-    if (payment.onDeadLoan) {
+    if (loan.status === LoanStatus.BAD_DEBT && payment.onDeadLoan) {
+      // ลบรายการเก็บคืน — ยอดขาดทุนกลับไปเท่าเดิม
+      this.loansService.setLoss(
+        loan,
+        round2(this.loansService.lossOf(loan) + payment.principalPaid),
+      );
+    } else if (payment.onDeadLoan) {
       loan.deadBalance = round2(
         (loan.deadBalance ?? 0) + payment.principalPaid,
       );

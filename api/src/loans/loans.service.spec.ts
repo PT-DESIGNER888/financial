@@ -54,6 +54,71 @@ const activeLoan = (over: Partial<Loan> = {}): Loan =>
     ...over,
   }) as Loan;
 
+describe('LoansService ยอดหนี้สูญ (lossOf / setLoss)', () => {
+  const writtenOff = (over: Partial<Loan> = {}) =>
+    activeLoan({ status: LoanStatus.BAD_DEBT, ...over });
+
+  it('ยอดปกติที่ตัดหนี้สูญ: ขาดทุน = ต้นคงเหลือ + ยอดค้าง', () => {
+    const loan = writtenOff({ outstandingPrincipal: 3_600, arrears: 1_200 });
+    expect(service.lossOf(loan)).toBe(4_800);
+  });
+
+  it('ยอดตายที่ตัดหนี้สูญ: ขาดทุน = ยอดตายที่ตรึงไว้', () => {
+    const loan = writtenOff({
+      deadDate: '2026-06-01',
+      deadBalance: 4_800,
+      outstandingPrincipal: 3_600,
+      arrears: 1_200,
+    });
+    expect(service.lossOf(loan)).toBe(4_800);
+  });
+
+  it('แก้ยอดหนี้สูญของยอดตาย → เขียนลง deadBalance (เดิมแก้แล้วไม่ขยับ)', () => {
+    const loan = writtenOff({ deadDate: '2026-06-01', deadBalance: 4_800 });
+    service.setLoss(loan, 3_800);
+    expect(loan.deadBalance).toBe(3_800);
+    expect(service.lossOf(loan)).toBe(3_800);
+  });
+
+  it('ลดยอดหนี้สูญของยอดปกติ — หักยอดค้างเก่าก่อน แล้วค่อยลดต้น', () => {
+    const loan = writtenOff({ outstandingPrincipal: 3_600, arrears: 1_200 });
+    service.setLoss(loan, 3_800); // เก็บคืนได้ 1,000
+    expect(loan.arrears).toBe(200);
+    expect(loan.outstandingPrincipal).toBe(3_600);
+    expect(service.lossOf(loan)).toBe(3_800);
+  });
+
+  it('ลดเกินยอดค้าง — ส่วนที่เหลือไปลดต้น', () => {
+    const loan = writtenOff({ outstandingPrincipal: 3_600, arrears: 1_200 });
+    service.setLoss(loan, 3_000);
+    expect(loan.arrears).toBe(0);
+    expect(loan.outstandingPrincipal).toBe(3_000);
+  });
+
+  it('เก็บคืนได้ครบ — ขาดทุนเหลือ 0 ไม่ติดลบ', () => {
+    const loan = writtenOff({ outstandingPrincipal: 3_600, arrears: 1_200 });
+    service.setLoss(loan, 0);
+    expect(loan.arrears).toBe(0);
+    expect(loan.outstandingPrincipal).toBe(0);
+    expect(service.lossOf(loan)).toBe(0);
+  });
+
+  it('แก้ยอดขึ้น (คีย์ต่ำไปตอนแรก) — ส่วนเพิ่มไปเข้าต้น', () => {
+    const loan = writtenOff({ outstandingPrincipal: 3_600, arrears: 1_200 });
+    service.setLoss(loan, 5_000);
+    expect(service.lossOf(loan)).toBe(5_000);
+    expect(loan.arrears).toBe(1_200);
+    expect(loan.outstandingPrincipal).toBe(3_800);
+  });
+
+  it('ลบรายการเก็บคืน — ยอดขาดทุนกลับมาเท่าเดิม', () => {
+    const loan = writtenOff({ outstandingPrincipal: 3_600, arrears: 1_200 });
+    service.setLoss(loan, service.lossOf(loan) - 1_000);
+    service.setLoss(loan, service.lossOf(loan) + 1_000);
+    expect(service.lossOf(loan)).toBe(4_800);
+  });
+});
+
 describe('LoansService.isDueOn', () => {
   it('รายสัปดาห์ = วันเดิมของสัปดาห์ถัดไป (เปิดจันทร์ → ครบกำหนดทุกจันทร์)', () => {
     // 2026-07-06 = วันจันทร์

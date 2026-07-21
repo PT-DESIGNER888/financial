@@ -436,14 +436,16 @@ export class DashboardService {
       (s, p) => s + p.interestPaid + p.arrearsPaid,
       0,
     );
-    // ยอดที่ตัดหนี้สูญ = ผลขาดทุน (ยอดตาย/ผ่อนงวดดู deadBalance, ยอดปกติดู ต้น+ค้าง)
-    const badDebt = badDebtLoans.reduce(
-      (s, l) =>
-        s +
-        (l.deadDate != null || l.installmentCount != null
-          ? (l.deadBalance ?? 0)
-          : l.outstandingPrincipal + l.arrears),
-      0,
+    // ยอดที่ตัดหนี้สูญ = ผลขาดทุนที่ยังเก็บไม่ได้ (หักส่วนที่เก็บคืนได้ทีหลังแล้ว)
+    const badDebt = round2(
+      badDebtLoans.reduce((s, l) => s + this.loansService.lossOf(l), 0),
+    );
+    // เงินที่เก็บคืนได้จากยอดที่ตัดหนี้สูญไปแล้ว — ทำให้ขาดทุนจริงน้อยกว่าที่ตัดไว้
+    const badDebtIds = new Set(badDebtLoans.map((l) => l.id));
+    const badDebtRecovered = round2(
+      pays
+        .filter((p) => p.onDeadLoan && badDebtIds.has(p.loanId))
+        .reduce((s, p) => s + p.amount, 0),
     );
 
     return {
@@ -462,6 +464,7 @@ export class DashboardService {
         0,
       ),
       badDebt,
+      badDebtRecovered,
       interestCollected,
       principalCollected: pays.reduce((s, p) => s + p.principalPaid, 0),
       // กำไรสุทธิ = ดอก+ค้างที่เก็บได้ − หนี้สูญ

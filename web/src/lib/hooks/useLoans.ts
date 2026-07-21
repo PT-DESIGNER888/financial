@@ -166,6 +166,8 @@ export interface AdjustLoanInput {
   outstandingPrincipal?: number;
   arrears?: number;
   deadBalance?: number;
+  /** ยอดหนี้สูญ (สถานะ BAD_DEBT) — แก้ยอดขาดทุนตรงๆ */
+  badDebtLoss?: number;
   reason: string;
 }
 

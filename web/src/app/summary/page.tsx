@@ -123,6 +123,9 @@ function SummaryView() {
           <Row label="ต้นที่ได้คืนสะสม" value={data.principalCollected} />
           <Row label="ดอกเก็บได้สะสม" value={data.interestCollected} />
           <Row label="หนี้สูญ (ขาดทุน)" value={data.badDebt} danger />
+          {data.badDebtRecovered > 0 && (
+            <Row label="เก็บคืนได้จากหนี้สูญ" value={data.badDebtRecovered} />
+          )}
           <div className="flex items-center justify-between py-3">
             <dt className="text-sm text-gray-500 dark:text-gray-400">
               จำนวนยอดกู้

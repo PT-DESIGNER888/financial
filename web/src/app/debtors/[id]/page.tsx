@@ -270,6 +270,7 @@ function DebtorView({ id }: { id: string }) {
               <LoanCard
                 key={loan.id}
                 loan={loan}
+                onPay={() => setPaying(loan)}
                 onAdjust={() => setAdjusting(loan)}
               />
             ))}
@@ -300,7 +301,11 @@ function DebtorView({ id }: { id: string }) {
           debtorName={debtor.name}
           frozen={
             paying.status === LoanStatus.DEAD ||
-            paying.status === LoanStatus.INSTALLMENT
+            paying.status === LoanStatus.INSTALLMENT ||
+            paying.status === LoanStatus.BAD_DEBT
+          }
+          frozenLabel={
+            paying.status === LoanStatus.BAD_DEBT ? 'ยอดหนี้สูญ' : 'ยอดผ่อน'
           }
           quickAmounts={
             paying.status === LoanStatus.DEAD ||
@@ -314,7 +319,9 @@ function DebtorView({ id }: { id: string }) {
                     ),
                   },
                 ]
-              : [{ label: 'ค้างเก่า', amount: paying.arrears }]
+              : paying.status === LoanStatus.BAD_DEBT
+                ? []
+                : [{ label: 'ค้างเก่า', amount: paying.arrears }]
           }
           onClose={() => setPaying(null)}
           onSaved={() => setPaying(null)}

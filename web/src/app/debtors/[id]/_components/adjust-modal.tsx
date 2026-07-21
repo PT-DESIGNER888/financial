@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Field, ModalButtons, TextInput } from '@/components/form';
+import { baht } from '@/lib/format';
 import { useAdjustLoan } from '@/lib/hooks/useLoans';
 import { LoanStatus } from '@/lib/types';
 import type { Loan } from '@/lib/types';
@@ -18,6 +19,13 @@ export function AdjustModal({
 }) {
   const isDead =
     loan.status === LoanStatus.DEAD || loan.status === LoanStatus.INSTALLMENT;
+  const isBadDebt = loan.status === LoanStatus.BAD_DEBT;
+  // ยอดขาดทุนที่ยังเก็บไม่ได้ — คิดแบบเดียวกับฝั่ง API (lossOf)
+  const currentLoss =
+    loan.deadDate != null || loan.installmentCount != null
+      ? (loan.deadBalance ?? 0)
+      : loan.outstandingPrincipal + loan.arrears;
+
   const [principal, setPrincipal] = useState(
     String(loan.outstandingPrincipal),
   );
@@ -25,6 +33,7 @@ export function AdjustModal({
   const [deadBalance, setDeadBalance] = useState(
     String(loan.deadBalance ?? 0),
   );
+  const [badDebtLoss, setBadDebtLoss] = useState(String(currentLoss));
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const adjust = useAdjustLoan();
@@ -35,13 +44,15 @@ export function AdjustModal({
       return;
     }
     try {
-      const input = isDead
-        ? { deadBalance: parseFloat(deadBalance) || 0, reason }
-        : {
-            outstandingPrincipal: parseFloat(principal) || 0,
-            arrears: parseFloat(arrears) || 0,
-            reason,
-          };
+      const input = isBadDebt
+        ? { badDebtLoss: parseFloat(badDebtLoss) || 0, reason }
+        : isDead
+          ? { deadBalance: parseFloat(deadBalance) || 0, reason }
+          : {
+              outstandingPrincipal: parseFloat(principal) || 0,
+              arrears: parseFloat(arrears) || 0,
+              reason,
+            };
       await adjust.mutateAsync({ id: loan.id, input });
       onSaved();
     } catch (e) {
@@ -50,11 +61,30 @@ export function AdjustModal({
   };
 
   return (
-    <ModalShell title="ปรับยอดด้วยมือ" onClose={onClose}>
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        ใช้แก้ยอดที่บันทึกผิด — ระบบจะบันทึกค่าก่อน/หลังและเหตุผลไว้ในประวัติจัดการ
+    <ModalShell
+      title={isBadDebt ? 'แก้ยอดหนี้สูญ' : 'ปรับยอดด้วยมือ'}
+      onClose={onClose}
+    >
+      <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+        {isBadDebt
+          ? 'ยอดนี้คือผลขาดทุนที่ใช้คิดในหน้าภาพรวม — กรอก 0 ถ้าสุดท้ายไม่ได้เสียหายเลย'
+          : 'ใช้แก้ยอดที่บันทึกผิด — ระบบจะบันทึกค่าก่อน/หลังและเหตุผลไว้ในประวัติจัดการ'}
       </p>
-      {isDead ? (
+      {isBadDebt ? (
+        <Field
+          label="ยอดหนี้สูญ (บาท)"
+          hint={`ตอนนี้ ฿${baht(currentLoss)} — ถ้าลูกหนี้ทยอยคืนมา ใช้ปุ่ม "รับเงินคืน" แทนจะได้มีประวัติ`}
+        >
+          <TextInput
+            type="number"
+            inputMode="decimal"
+            align="right"
+            autoFocus
+            value={badDebtLoss}
+            onChange={(e) => setBadDebtLoss(e.target.value)}
+          />
+        </Field>
+      ) : isDead ? (
         <Field label="ยอดผ่อนคงเหลือ">
           <TextInput
             type="number"

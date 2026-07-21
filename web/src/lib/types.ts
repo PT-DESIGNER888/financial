@@ -367,6 +367,8 @@ export interface Summary {
   deadBalance: number;
   installmentBalance: number;
   badDebt: number;
+  /** เงินที่เก็บคืนได้จากยอดที่ตัดหนี้สูญไปแล้ว */
+  badDebtRecovered: number;
   interestCollected: number;
   principalCollected: number;
   netProfit: number;

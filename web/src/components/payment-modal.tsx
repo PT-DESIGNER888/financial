@@ -14,8 +14,10 @@ import { PaymentType } from '@/lib/types';
 interface Props {
   loanId: string;
   debtorName: string;
-  /** ยอดตาย/ผ่อนงวด: รับเป็นเงินผ่อนก้อนเดียว หักจากยอดคงเหลือ */
+  /** ยอดตาย/ผ่อนงวด/หนี้สูญ: รับเป็นเงินก้อนเดียว หักจากยอดคงเหลือ */
   frozen: boolean;
+  /** ชื่อยอดที่หัก เมื่อ frozen — เช่น "ยอดผ่อน" (ค่าเริ่มต้น) หรือ "ยอดหนี้สูญ" */
+  frozenLabel?: string;
   /** ปุ่มยอดด่วน เช่น ยอดที่ต้องเก็บวันนี้ */
   quickAmounts?: { label: string; amount: number }[];
   onClose: () => void;
@@ -37,6 +39,7 @@ export function PaymentModal({
   loanId,
   debtorName,
   frozen,
+  frozenLabel = 'ยอดผ่อน',
   quickAmounts,
   onClose,
   onSaved,
@@ -400,7 +403,7 @@ export function PaymentModal({
           </h3>
 
           {frozen ? (
-            numField('หักยอดผ่อน', principalPaid, setPrincipalPaid)
+            numField(`หัก${frozenLabel}`, principalPaid, setPrincipalPaid)
           ) : paymentType === PaymentType.INTEREST ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
               {numField('ค้างเก่า', arrearsPaid, setArrearsPaid)}
@@ -418,7 +421,7 @@ export function PaymentModal({
 
           <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 text-sm dark:bg-gray-950/60">
             <span className="text-slate-500 dark:text-gray-400">
-              {frozen ? 'ยอดผ่อนคงเหลือ' : 'เงินต้นคงเหลือ'}
+              {frozen ? `${frozenLabel}คงเหลือ` : 'เงินต้นคงเหลือ'}
             </span>
             <strong className="text-base tabular-nums text-slate-900 md:text-lg dark:text-white">
               {amountEmpty ? '—' : `฿${baht(remainingPrincipal)}`}
