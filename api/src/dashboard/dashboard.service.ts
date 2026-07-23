@@ -76,11 +76,37 @@ export function appointmentDue(
   day: string,
 ): number {
   if (loan.principalDueDate !== day) return 0;
-  const frozen =
-    loan.status === LoanStatus.DEAD || loan.status === LoanStatus.INSTALLMENT;
-  const balance = frozen ? (loan.deadBalance ?? 0) : loan.outstandingPrincipal;
+  // ผ่อนงวดมีตารางงวดของตัวเองอยู่แล้ว ไม่ใช้นัดคืนต้น
+  if (loan.status === LoanStatus.INSTALLMENT) return 0;
+  const balance =
+    loan.status === LoanStatus.DEAD
+      ? (loan.deadBalance ?? 0)
+      : loan.outstandingPrincipal;
   if (!(balance > 0)) return 0;
   return Math.min(loan.principalDueAmount ?? balance, balance);
+}
+
+/**
+ * ยอดที่ยังต้องเก็บของวันนั้น หลังหักเงินที่รับมาแล้ว
+ *
+ * ผ่อนงวดต้องแยกออกมา เพราะ dueNow ของตารางผ่อนหักเงินที่จ่ายมาแล้ว "ทั้งหมด"
+ * (รวมของวันนี้และที่จ่ายล่วงหน้า) ให้เรียบร้อยแล้ว — เอามาลบเงินของวันนี้ซ้ำอีก
+ * จะกลายเป็น 0 ทั้งที่ยังเก็บไม่ครบ แล้วยอดจะหายไปจากรายการ "ยังไม่จ่าย"
+ * ส่วนยอดตาย/นัดคืนต้นเป็นยอดที่ตกลงไว้ตายตัว ต้องหักเงินของวันนั้นเอง
+ */
+export function remainingBalanceOnDay(input: {
+  status: LoanStatus;
+  duePrincipal: number;
+  dueInstallment: number;
+  /** ผ่อนงวด: ยอดค้างสุทธิจากตารางผ่อน (หักที่จ่ายมาแล้วทั้งหมดให้แล้ว) */
+  installmentDueNow: number;
+  paidTowardBalance: number;
+}): number {
+  if (input.status === LoanStatus.INSTALLMENT) return input.installmentDueNow;
+  return Math.max(
+    0,
+    round2(input.duePrincipal + input.dueInstallment - input.paidTowardBalance),
+  );
 }
 
 /**
@@ -169,6 +195,7 @@ export class DashboardService {
     // ยอดตาย/ผ่อนงวดที่ถึงกำหนดวันนี้
     // มีนัดคืนต้นวันเดียวกัน = ยึดตามที่นัด (นัดคือข้อตกลงเฉพาะวันนั้น ไม่บวกซ้ำกับงวด)
     let dueInstallment = 0;
+    let installmentDueNow = 0;
     if (frozen && duePrincipal > 0) {
       dueInstallment = 0;
     } else if (loan.status === LoanStatus.DEAD) {
@@ -179,18 +206,30 @@ export class DashboardService {
         );
       }
     } else if (loan.status === LoanStatus.INSTALLMENT) {
-      dueInstallment =
-        this.loansService.buildInstallmentSchedule(loan, day)?.dueNow ?? 0;
+      const sch = this.loansService.buildInstallmentSchedule(loan, day);
+      installmentDueNow = sch?.dueNow ?? 0;
+      // ยอดเต็มของวัน = งวดที่ครบกำหนดวันนั้น หรือยอดค้างสะสมถ้ามากกว่า
+      // ต้องใช้ยอดเต็ม (ไม่ใช่ยอดสุทธิ) ไม่งั้นงวดที่จ่ายล่วงหน้ามาแล้วจะหาย
+      // จากหน้าเก็บวันนี้ทั้งที่ถึงกำหนดวันนั้น — ยอดปกติโชว์ทุกวันครบกำหนดอยู่แล้ว
+      const scheduledToday = round2(
+        (sch?.rows ?? [])
+          .filter((r) => r.dueDate === day)
+          .reduce((s, r) => s + r.scheduled, 0),
+      );
+      dueInstallment = Math.max(installmentDueNow, scheduledToday);
     }
 
     // ยอดตาย/ผ่อนงวดรับเป็นเงินก้อนเดียว (onDeadLoan) ยอดปกติดูเฉพาะส่วนที่ตัดต้น
     const paidTowardBalance = (loan.payments ?? [])
       .filter((p) => p.paidDate === day && p.onDeadLoan === frozen)
       .reduce((s, p) => s + (frozen ? p.amount : p.principalPaid), 0);
-    const remainingBalanceDue = Math.max(
-      0,
-      round2(duePrincipal + dueInstallment - paidTowardBalance),
-    );
+    const remainingBalanceDue = remainingBalanceOnDay({
+      status: loan.status,
+      duePrincipal,
+      dueInstallment,
+      installmentDueNow,
+      paidTowardBalance,
+    });
 
     const paidToday = round2(
       (loan.payments ?? [])

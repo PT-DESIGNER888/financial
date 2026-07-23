@@ -1,6 +1,10 @@
 import { LoanStatus } from '../common/enums';
 import type { Loan } from '../entities/loan.entity';
-import { appointmentDue, arrearsBucket } from './dashboard.service';
+import {
+  appointmentDue,
+  arrearsBucket,
+  remainingBalanceOnDay,
+} from './dashboard.service';
 
 type BucketInput = Pick<Loan, 'status' | 'arrears' | 'deadBalance'>;
 
@@ -109,5 +113,78 @@ describe('appointmentDue — นัดคืนต้นที่ถึงกำ
   it('ยอดตายที่ผ่อนหมดแล้ว → ไม่ทวงซ้ำ', () => {
     const l = withAppt({ status: LoanStatus.DEAD, deadBalance: 0 });
     expect(appointmentDue(l, '2026-07-25')).toBe(0);
+  });
+
+  it('ผ่อนงวดไม่ใช้นัดคืนต้น (มีตารางงวดอยู่แล้ว)', () => {
+    const l = withAppt({
+      status: LoanStatus.INSTALLMENT,
+      deadBalance: 1_200,
+      principalDueAmount: 500,
+    });
+    expect(appointmentDue(l, '2026-07-25')).toBe(0);
+  });
+});
+
+describe('remainingBalanceOnDay — ยอดที่ยังต้องเก็บของวันนั้น', () => {
+  it('ผ่อนงวด: จ่ายมาบางส่วน ยอดที่เหลือต้องไม่กลายเป็น 0', () => {
+    // งวดค้าง 2 งวด (฿200) จ่ายมา ฿100 → dueNow เหลือ 100 (หักให้แล้ว)
+    // ห้ามเอา 100 ที่จ่ายวันนี้มาลบซ้ำจนเหลือ 0
+    expect(
+      remainingBalanceOnDay({
+        status: LoanStatus.INSTALLMENT,
+        duePrincipal: 0,
+        dueInstallment: 200,
+        installmentDueNow: 100,
+        paidTowardBalance: 100,
+      }),
+    ).toBe(100);
+  });
+
+  it('ผ่อนงวด: จ่ายล่วงหน้ามาแล้ว → ไม่ต้องเก็บเพิ่มวันนี้', () => {
+    expect(
+      remainingBalanceOnDay({
+        status: LoanStatus.INSTALLMENT,
+        duePrincipal: 0,
+        dueInstallment: 100, // งวดวันนี้ยังโชว์ให้เห็นว่ามีนัด
+        installmentDueNow: 0, // แต่จ่ายมาก่อนแล้ว
+        paidTowardBalance: 0,
+      }),
+    ).toBe(0);
+  });
+
+  it('ยอดตาย: งวดตายตัว ต้องหักเงินที่จ่ายวันนั้นเอง', () => {
+    expect(
+      remainingBalanceOnDay({
+        status: LoanStatus.DEAD,
+        duePrincipal: 0,
+        dueInstallment: 500,
+        installmentDueNow: 0,
+        paidTowardBalance: 200,
+      }),
+    ).toBe(300);
+  });
+
+  it('ยอดปกติ: นัดคืนต้น ฿1,000 จ่ายมา ฿400 → เหลือ ฿600', () => {
+    expect(
+      remainingBalanceOnDay({
+        status: LoanStatus.ACTIVE,
+        duePrincipal: 1_000,
+        dueInstallment: 0,
+        installmentDueNow: 0,
+        paidTowardBalance: 400,
+      }),
+    ).toBe(600);
+  });
+
+  it('จ่ายเกินยอดที่ต้องเก็บ → ไม่ติดลบ', () => {
+    expect(
+      remainingBalanceOnDay({
+        status: LoanStatus.DEAD,
+        duePrincipal: 0,
+        dueInstallment: 500,
+        installmentDueNow: 0,
+        paidTowardBalance: 900,
+      }),
+    ).toBe(0);
   });
 });

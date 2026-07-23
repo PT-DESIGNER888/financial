@@ -301,6 +301,8 @@ function DebtorCard({
   done?: boolean;
 }) {
   const single = group.items.length === 1;
+  // ถึงกำหนดวันนี้แต่จ่ายมาก่อนหน้าแล้ว — ต้องบอกให้ชัด ไม่งั้นเห็นเป็น ฿0 แล้วงง
+  const prepaid = !!done && group.paidToday === 0 && group.dueTotal > 0;
 
   return (
     <article className="flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">
@@ -324,14 +326,18 @@ function DebtorCard({
             {group.items.length} ยอดกู้
           </span>
         </Link>
-        <StatusBadge paid={!!done} />
+        <StatusBadge paid={!!done} prepaid={prepaid} />
       </header>
 
       <div className="space-y-3 p-4">
         <div className="rounded-xl bg-slate-50 px-3.5 py-3 dark:bg-gray-800/60">
           <div className="flex items-baseline justify-between gap-3">
             <p className="text-[13px] text-slate-500 dark:text-gray-400">
-              {done ? 'รับแล้ววันนี้' : 'ต้องส่งวันนี้'}
+              {prepaid
+                ? 'ส่งล่วงหน้าไว้แล้ว'
+                : done
+                  ? 'รับแล้ววันนี้'
+                  : 'ต้องส่งวันนี้'}
             </p>
             <p
               data-money
@@ -341,7 +347,14 @@ function DebtorCard({
                   : 'text-slate-900 dark:text-white'
               }`}
             >
-              ฿{baht(done ? group.paidToday : group.remainingToday)}
+              ฿
+              {baht(
+                prepaid
+                  ? group.dueTotal
+                  : done
+                    ? group.paidToday
+                    : group.remainingToday,
+              )}
             </p>
           </div>
           <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-gray-400">
@@ -422,6 +435,7 @@ function DebtorCard({
 function LoanRow({ item, onPay }: { item: TodayItem; onPay: () => void }) {
   const frozen = item.status === 'DEAD' || item.status === 'INSTALLMENT';
   const settled = item.remainingToday <= 0;
+  const prepaid = settled && item.paidToday === 0 && item.dueTotal > 0;
 
   return (
     <li className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
@@ -437,6 +451,12 @@ function LoanRow({ item, onPay }: { item: TodayItem; onPay: () => void }) {
           {item.duePrincipal > 0 && (
             <span className="text-primary"> · นัดคืนวันนี้</span>
           )}
+          {prepaid && (
+            <span className="text-sky-700 dark:text-sky-400">
+              {' '}
+              · ส่งล่วงหน้าไว้แล้ว
+            </span>
+          )}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -448,7 +468,14 @@ function LoanRow({ item, onPay }: { item: TodayItem; onPay: () => void }) {
               : 'text-slate-900 dark:text-white'
           }`}
         >
-          ฿{baht(settled ? item.paidToday : item.remainingToday)}
+          ฿
+          {baht(
+            prepaid
+              ? item.dueTotal
+              : settled
+                ? item.paidToday
+                : item.remainingToday,
+          )}
         </span>
         <Button
           size="sm"
@@ -464,7 +491,19 @@ function LoanRow({ item, onPay }: { item: TodayItem; onPay: () => void }) {
   );
 }
 
-function StatusBadge({ paid }: { paid: boolean }) {
+function StatusBadge({
+  paid,
+  prepaid,
+}: {
+  paid: boolean;
+  prepaid?: boolean;
+}) {
+  if (prepaid)
+    return (
+      <span className="shrink-0 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
+        ส่งล่วงหน้า
+      </span>
+    );
   return paid ? (
     <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
       จ่ายแล้ว
