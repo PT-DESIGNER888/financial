@@ -276,7 +276,7 @@ export function PaymentModal({
                   hint: 'เงินต้นคงเดิม',
                 },
                 { value: PaymentType.PRINCIPAL, label: 'ลดเงินต้น', hint: 'ตัดต้นอย่างเดียว' },
-                { value: PaymentType.BOTH, label: 'ดอก + ลดต้น', hint: 'ค้าง→ดอก→ต้น' },
+                { value: PaymentType.BOTH, label: 'ดอก + ลดต้น', hint: 'ดอก→ค้าง→ต้น' },
               ]}
             />
           </div>
@@ -406,15 +406,15 @@ export function PaymentModal({
             numField(`หัก${frozenLabel}`, principalPaid, setPrincipalPaid)
           ) : paymentType === PaymentType.INTEREST ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-              {numField('ค้างเก่า', arrearsPaid, setArrearsPaid)}
               {numField('ดอกรอบนี้', interestPaid, setInterestPaid)}
+              {numField('ค้างเก่า', arrearsPaid, setArrearsPaid)}
             </div>
           ) : paymentType === PaymentType.PRINCIPAL ? (
             numField('ตัดเงินต้น', principalPaid, setPrincipalPaid)
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-              {numField('ค้างเก่า', arrearsPaid, setArrearsPaid)}
               {numField('ดอกรอบนี้', interestPaid, setInterestPaid)}
+              {numField('ค้างเก่า', arrearsPaid, setArrearsPaid)}
               {numField('ตัดเงินต้น', principalPaid, setPrincipalPaid)}
             </div>
           )}

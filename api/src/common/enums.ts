@@ -62,7 +62,7 @@ export const PaymentType = {
   INTEREST: 'INTEREST',
   /** ลดเงินต้นอย่างเดียว */
   PRINCIPAL: 'PRINCIPAL',
-  /** ค้างเก่า → ดอก → ตัดต้น */
+  /** ดอกรอบนี้ → ค้างเก่า → ตัดต้น */
   BOTH: 'BOTH',
 } as const;
 export type PaymentType = (typeof PaymentType)[keyof typeof PaymentType];

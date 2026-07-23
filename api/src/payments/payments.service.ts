@@ -16,7 +16,7 @@ export interface RecordPaymentInput {
   paidDate?: string;
   amount: number;
   /** ประเภทการรับชำระ: INTEREST = ชำระดอก (ห้ามแตะต้น), PRINCIPAL = ลดต้นอย่างเดียว,
-   *  BOTH = ค้างเก่า → ดอก → ตัดต้น (ค่าเริ่มต้นเดิม) */
+   *  BOTH = ดอกรอบนี้ → ค้างเก่า → ตัดต้น */
   paymentType?: PaymentType;
   /** ยอดดอกรอบนี้ที่ตกลงเก็บจริง — บันทึกลงรอบดอก (override ที่ระบบคำนวณ) */
   interestDueOverride?: number;
@@ -25,6 +25,51 @@ export interface RecordPaymentInput {
   interestPaid?: number;
   principalPaid?: number;
   note?: string;
+}
+
+/**
+ * จัดสรรเงินที่รับมาเข้า ดอกรอบนี้ → ค้างเก่า → ตัดต้น
+ *
+ * ดอกรอบนี้ต้องมาก่อนค้างเก่าเสมอ ไม่งั้นเงินที่เก็บได้วันนี้จะถูกดูดไปหักค้างเก่า
+ * ทั้งก้อน แล้วดอกของรอบนี้จะไปตกเป็นยอดค้างเพิ่มตอนจบรอบ — เก็บครบทุกวัน
+ * แต่ยอดค้างกลับโตขึ้นเรื่อยๆ (ยอดค้างเก่า "รัน" ไปกับยอดที่ต้องเก็บวันนี้)
+ * ส่วนที่เหลือจากดอกรอบนี้ค่อยไปหักค้างเก่า — จ่ายเกินมาก็ยังเคลียร์ของเก่าได้
+ */
+export function allocatePayment(input: {
+  amount: number;
+  paymentType: PaymentType;
+  /** ดอกรอบที่กำลังเดินที่ยังไม่ได้จ่าย */
+  interestRemaining: number;
+  /** ยอดค้างสะสมจากรอบก่อนๆ */
+  arrearsDue: number;
+  principalBalance: number;
+}) {
+  const { amount, paymentType } = input;
+  const canInterest = paymentType !== PaymentType.PRINCIPAL;
+  const canArrears = paymentType !== PaymentType.PRINCIPAL;
+  const canPrincipal = paymentType !== PaymentType.INTEREST;
+
+  let rest = amount;
+  const interestPaid = canInterest
+    ? Math.min(rest, input.interestRemaining)
+    : 0;
+  rest = round2(rest - interestPaid);
+  const arrearsPaid = canArrears ? Math.min(rest, input.arrearsDue) : 0;
+  rest = round2(rest - arrearsPaid);
+  const principalPaid = canPrincipal
+    ? Math.min(rest, input.principalBalance)
+    : 0;
+
+  return {
+    interestPaid,
+    arrearsPaid,
+    principalPaid,
+    maxReceivable: round2(
+      (canInterest ? input.interestRemaining : 0) +
+        (canArrears ? input.arrearsDue : 0) +
+        (canPrincipal ? input.principalBalance : 0),
+    ),
+  };
 }
 
 @Injectable()
@@ -36,9 +81,9 @@ export class PaymentsService {
 
   /**
    * คำนวณการจัดสรรอัตโนมัติตามประเภทการรับชำระ
-   *  - INTEREST: ค้างเก่า → ดอกรอบนี้ (เงินต้นคงเดิมเสมอ)
+   *  - INTEREST: ดอกรอบนี้ → ค้างเก่า (เงินต้นคงเดิมเสมอ)
    *  - PRINCIPAL: ลดต้นอย่างเดียว
-   *  - BOTH: ค้างเก่า → ดอกรอบนี้ → ตัดต้น (พฤติกรรมเดิม)
+   *  - BOTH: ดอกรอบนี้ → ค้างเก่า → ตัดต้น
    * "ดอกรอบนี้" = รอบดอกที่กำลังเดิน (จ่ายได้ตลอดรอบ ไม่ต้องรอวันครบกำหนดพอดี)
    * interestDueOverride = ยอดดอกรอบนี้ที่ตกลงเก็บจริง (พรีวิวก่อนบันทึก)
    */
@@ -84,22 +129,14 @@ export class PaymentsService {
     const arrearsDue = loan.arrears;
     const principalBalance = loan.outstandingPrincipal;
 
-    const canArrears = paymentType !== PaymentType.PRINCIPAL;
-    const canInterest = paymentType !== PaymentType.PRINCIPAL;
-    const canPrincipal = paymentType !== PaymentType.INTEREST;
-
-    let rest = amount;
-    const arrearsPaid = canArrears ? Math.min(rest, arrearsDue) : 0;
-    rest = round2(rest - arrearsPaid);
-    const interestPaid = canInterest ? Math.min(rest, interestRemaining) : 0;
-    rest = round2(rest - interestPaid);
-    const principalPaid = canPrincipal ? Math.min(rest, principalBalance) : 0;
-
-    const maxReceivable = round2(
-      (canArrears ? arrearsDue : 0) +
-        (canInterest ? interestRemaining : 0) +
-        (canPrincipal ? principalBalance : 0),
-    );
+    const { arrearsPaid, interestPaid, principalPaid, maxReceivable } =
+      allocatePayment({
+        amount,
+        paymentType,
+        interestRemaining,
+        arrearsDue,
+        principalBalance,
+      });
     return {
       arrearsPaid,
       interestPaid,
