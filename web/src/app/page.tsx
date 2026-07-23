@@ -347,7 +347,7 @@ function DebtorCard({
           <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-gray-400">
             {[
               group.dueInterest > 0 && `ดอก ฿${baht(group.dueInterest)}`,
-              group.duePrincipal > 0 && `นัดคืนต้น ฿${baht(group.duePrincipal)}`,
+              group.duePrincipal > 0 && `นัดคืน ฿${baht(group.duePrincipal)}`,
               group.dueInstallment > 0 &&
                 `ผ่อน ฿${baht(group.dueInstallment)}`,
             ]
@@ -435,7 +435,7 @@ function LoanRow({ item, onPay }: { item: TodayItem; onPay: () => void }) {
           {frozen ? 'ผ่อนเหลือ' : 'ต้นเหลือ'} ฿
           {baht(frozen ? item.deadBalance : item.outstandingPrincipal)}
           {item.duePrincipal > 0 && (
-            <span className="text-primary"> · นัดคืนต้นวันนี้</span>
+            <span className="text-primary"> · นัดคืนวันนี้</span>
           )}
         </p>
       </div>

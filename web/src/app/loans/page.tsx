@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { AuthGate } from '@/components/auth-gate';
 import { buttonClassName, SelectMenu, TextInput } from '@/components/form';
 import { IconPlus } from '@/components/icons';
@@ -13,7 +14,9 @@ import type { LoanListItem, LoanStatus } from '@/lib/types';
 export default function LoansPage() {
   return (
     <AuthGate>
-      <LoansView />
+      <Suspense fallback={<PageSkeleton />}>
+        <LoansView />
+      </Suspense>
     </AuthGate>
   );
 }
@@ -29,6 +32,9 @@ const filterOptions: { value: Filter; label: string }[] = [
   { value: 'CLOSED', label: 'ปิดยอดแล้ว' },
   { value: 'BAD_DEBT', label: 'หนี้สูญ' },
 ];
+
+const isFilter = (v: string | null): v is Filter =>
+  filterOptions.some((o) => o.value === v);
 
 const statusStyle: Record<LoanStatus, string> = {
   ACTIVE:
@@ -51,7 +57,11 @@ function interestLabel(l: LoanListItem): string {
 function LoansView() {
   const { data: loans, error } = useAllLoans();
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<Filter>('ALL');
+  // เปิดหน้านี้พร้อมกรองสถานะได้จาก ?status= (มาจากชิปในหน้าภาพรวม)
+  const initial = useSearchParams().get('status');
+  const [filter, setFilter] = useState<Filter>(
+    isFilter(initial) ? initial : 'ALL',
+  );
 
   if (error)
     return <p className="py-10 text-center text-red-600">{error.message}</p>;

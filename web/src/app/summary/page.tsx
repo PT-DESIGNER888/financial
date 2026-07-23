@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { AuthGate } from '@/components/auth-gate';
 import {
   IconAlert,
@@ -11,6 +12,7 @@ import {
 import { PageSkeleton } from '@/components/skeleton';
 import { baht } from '@/lib/format';
 import { useSummary } from '@/lib/hooks/useDashboard';
+import type { LoanStatus } from '@/lib/types';
 
 export default function SummaryPage() {
   return (
@@ -126,31 +128,82 @@ function SummaryView() {
           {data.badDebtRecovered > 0 && (
             <Row label="เก็บคืนได้จากหนี้สูญ" value={data.badDebtRecovered} />
           )}
-          <div className="flex items-center justify-between py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 py-3">
             <dt className="text-sm text-gray-500 dark:text-gray-400">
               จำนวนยอดกู้
+              <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">
+                (แตะเพื่อดูรายการ)
+              </span>
             </dt>
             <dd className="flex flex-wrap justify-end gap-2 text-sm">
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
-                ปกติ {data.counts.activeLoans}
-              </span>
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                ยอดตาย {data.counts.deadLoans}
-              </span>
-              <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
-                ผ่อนงวด {data.counts.installmentLoans}
-              </span>
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                ปิดแล้ว {data.counts.closedLoans}
-              </span>
-              <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/10 dark:text-red-400">
-                หนี้สูญ {data.counts.badDebtLoans}
-              </span>
+              <CountChip
+                status="ACTIVE"
+                label="ปกติ"
+                count={data.counts.activeLoans}
+                cls="bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+              />
+              <CountChip
+                status="DEAD"
+                label="ยอดตาย"
+                count={data.counts.deadLoans}
+                cls="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+              />
+              <CountChip
+                status="INSTALLMENT"
+                label="ผ่อนงวด"
+                count={data.counts.installmentLoans}
+                cls="bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-400"
+              />
+              <CountChip
+                status="CLOSED"
+                label="ปิดแล้ว"
+                count={data.counts.closedLoans}
+                cls="bg-primary/10 text-primary"
+              />
+              <CountChip
+                status="BAD_DEBT"
+                label="หนี้สูญ"
+                count={data.counts.badDebtLoans}
+                cls="bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400"
+              />
             </dd>
           </div>
         </dl>
       </section>
     </div>
+  );
+}
+
+/**
+ * ชิปจำนวนยอดกู้ — แตะแล้วไปหน้าสัญญาพร้อมกรองสถานะนั้นให้เลย
+ * ไม่มียอดในกลุ่มนั้นก็ไม่ต้องกด (โชว์เป็นตัวเลขเฉยๆ)
+ */
+function CountChip({
+  status,
+  label,
+  count,
+  cls,
+}: {
+  status: LoanStatus;
+  label: string;
+  count: number;
+  cls: string;
+}) {
+  const base = `rounded-full px-2 py-0.5 text-xs font-medium ${cls}`;
+  if (count === 0)
+    return (
+      <span className={`${base} opacity-60`}>
+        {label} {count}
+      </span>
+    );
+  return (
+    <Link
+      href={`/loans?status=${status}`}
+      className={`${base} transition-opacity hover:opacity-80`}
+      aria-label={`ดูรายการยอดกู้สถานะ${label} ${count} รายการ`}
+    >
+      {label} {count}
+    </Link>
   );
 }
 

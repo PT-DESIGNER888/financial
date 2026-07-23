@@ -145,6 +145,10 @@ export function useUpdateCycle() {
 export interface EditLoanInput {
   interestRatePercent?: number;
   cycle?: 'DAILY' | 'WEEKLY' | 'TEN_DAY';
+  /** ยอดตาย: งวดผ่อน/10 วัน */
+  installmentAmount?: number;
+  /** true = ยอดตายนี้ไม่มีกำหนดงวด ทยอยคืนเมื่อไหร่ก็ได้ */
+  clearInstallment?: boolean;
   /** นัดคืนต้น: วันที่ลูกหนี้ตกลงจะเอาเงินก้อนมาตัดต้น */
   principalDueDate?: string;
   principalDueAmount?: number;

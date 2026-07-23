@@ -1,6 +1,6 @@
 import { LoanStatus } from '../common/enums';
 import type { Loan } from '../entities/loan.entity';
-import { arrearsBucket } from './dashboard.service';
+import { appointmentDue, arrearsBucket } from './dashboard.service';
 
 type BucketInput = Pick<Loan, 'status' | 'arrears' | 'deadBalance'>;
 
@@ -53,5 +53,61 @@ describe('arrearsBucket — จัดยอดเข้าช่องในห�
         0,
       ),
     ).toBeNull();
+  });
+});
+
+describe('appointmentDue — นัดคืนต้นที่ถึงกำหนดในวันนั้น', () => {
+  type Appt = Parameters<typeof appointmentDue>[0];
+  const withAppt = (over: Partial<Appt>): Appt => ({
+    status: LoanStatus.ACTIVE,
+    outstandingPrincipal: 5_000,
+    deadBalance: null,
+    principalDueDate: '2026-07-25',
+    principalDueAmount: null,
+    ...over,
+  });
+
+  it('ยอดตายลงนัดคืนไว้ → ถึงวันนัดโผล่เป็นยอดที่ต้องรับ', () => {
+    const l = withAppt({
+      status: LoanStatus.DEAD,
+      deadBalance: 7_000,
+      principalDueAmount: 1_000,
+    });
+    expect(appointmentDue(l, '2026-07-25')).toBe(1_000);
+  });
+
+  it('ยอดตายไม่ระบุยอดที่นัด → ทั้งยอดตายคงเหลือ (ไม่ใช่ต้นคงเหลือ)', () => {
+    const l = withAppt({
+      status: LoanStatus.DEAD,
+      deadBalance: 7_000,
+      outstandingPrincipal: 5_000,
+      principalDueAmount: null,
+    });
+    expect(appointmentDue(l, '2026-07-25')).toBe(7_000);
+  });
+
+  it('ยอดปกติไม่ระบุยอดที่นัด → ทั้งต้นคงเหลือ', () => {
+    expect(appointmentDue(withAppt({}), '2026-07-25')).toBe(5_000);
+  });
+
+  it('นัดไว้เกินยอดคงเหลือ → ไม่เกินยอดที่เหลือจริง', () => {
+    const l = withAppt({ principalDueAmount: 9_999 });
+    expect(appointmentDue(l, '2026-07-25')).toBe(5_000);
+  });
+
+  it('ยังไม่ถึงวันนัด / เลยวันนัดแล้ว → ไม่นับ', () => {
+    expect(appointmentDue(withAppt({}), '2026-07-24')).toBe(0);
+    expect(appointmentDue(withAppt({}), '2026-07-26')).toBe(0);
+  });
+
+  it('ไม่ได้ลงนัดไว้ → ไม่นับ', () => {
+    expect(
+      appointmentDue(withAppt({ principalDueDate: null }), '2026-07-25'),
+    ).toBe(0);
+  });
+
+  it('ยอดตายที่ผ่อนหมดแล้ว → ไม่ทวงซ้ำ', () => {
+    const l = withAppt({ status: LoanStatus.DEAD, deadBalance: 0 });
+    expect(appointmentDue(l, '2026-07-25')).toBe(0);
   });
 });

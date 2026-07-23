@@ -942,12 +942,17 @@ export class LoansService {
     return loan;
   }
 
-  /** แก้เงื่อนไขยอดกู้: อัตราดอก / รอบเก็บ / นัดคืนต้น / หมายเหตุ */
+  /**
+   * แก้เงื่อนไขยอดกู้: อัตราดอก / รอบเก็บ / งวดผ่อน / นัดคืนต้น / หมายเหตุ
+   * ยอดตายไม่มีดอกและไม่มีรอบเก็บ — ส่งมาแค่ที่เกี่ยวข้องได้ ไม่บังคับกรอกดอก
+   */
   async editTerms(
     id: string,
     input: {
       interestRatePercent?: number;
       cycle?: RevolvingCycle;
+      /** ยอดตาย: งวดผ่อน/10 วัน (null = ทยอยคืนเมื่อไหร่ก็ได้) */
+      installmentAmount?: number | null;
       principalDueDate?: string | null;
       principalDueAmount?: number | null;
       note?: string | null;
@@ -957,17 +962,31 @@ export class LoansService {
     const before = {
       interestRatePercent: loan.interestRatePercent,
       cycle: loan.cycle,
+      installmentAmount: loan.installmentAmount,
       principalDueDate: loan.principalDueDate,
       principalDueAmount: loan.principalDueAmount,
       note: loan.note,
     };
     const patch: Partial<Loan> = {};
     if (input.interestRatePercent !== undefined) {
+      if (loan.status === LoanStatus.DEAD)
+        throw new BadRequestException('ยอดตายไม่คิดดอกเบี้ย');
       if (input.interestRatePercent <= 0)
         throw new BadRequestException('อัตราดอกต้องมากกว่า 0');
       patch.interestRatePercent = input.interestRatePercent;
     }
-    if (input.cycle !== undefined) patch.cycle = input.cycle;
+    if (input.cycle !== undefined) {
+      if (loan.status === LoanStatus.DEAD)
+        throw new BadRequestException('ยอดตายไม่มีรอบเก็บดอก');
+      patch.cycle = input.cycle;
+    }
+    if (input.installmentAmount !== undefined) {
+      if (loan.status !== LoanStatus.DEAD)
+        throw new BadRequestException('แก้งวดผ่อนได้เฉพาะยอดตาย');
+      if (input.installmentAmount !== null && input.installmentAmount <= 0)
+        throw new BadRequestException('งวดผ่อนต้องมากกว่า 0');
+      patch.installmentAmount = input.installmentAmount;
+    }
     if (input.principalDueDate !== undefined)
       patch.principalDueDate = input.principalDueDate;
     if (input.principalDueAmount !== undefined) {

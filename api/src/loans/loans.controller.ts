@@ -171,6 +171,16 @@ class EditLoanDto {
   @IsIn(REVOLVING_CYCLES)
   cycle?: RevolvingCycle;
 
+  /** ยอดตาย: งวดผ่อน/10 วัน (ล้างงวดใช้ clearInstallment) */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
+  installmentAmount?: number;
+
+  /** true = ยอดตายนี้ไม่มีกำหนดงวดตายตัว ทยอยคืนเมื่อไหร่ก็ได้ */
+  @IsOptional() @IsBoolean() clearInstallment?: boolean;
+
   /** นัดคืนต้น: วันที่ตกลงจะเอาเงินก้อนมาตัดต้น (ล้างนัดใช้ clearPrincipalDue) */
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) principalDueDate?: string;
 
@@ -278,9 +288,10 @@ export class LoansController {
 
   @Patch(':id')
   edit(@Param('id') id: string, @Body() dto: EditLoanDto) {
-    const { clearPrincipalDue, ...rest } = dto;
+    const { clearPrincipalDue, clearInstallment, ...rest } = dto;
     return this.loans.editTerms(id, {
       ...rest,
+      installmentAmount: clearInstallment ? null : dto.installmentAmount,
       principalDueDate: clearPrincipalDue ? null : dto.principalDueDate,
       principalDueAmount: clearPrincipalDue ? null : dto.principalDueAmount,
     });

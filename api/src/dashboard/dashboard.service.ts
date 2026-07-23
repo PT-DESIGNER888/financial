@@ -60,6 +60,30 @@ export interface ArrearsRow {
 }
 
 /**
+ * ยอดนัดคืนต้นที่ถึงกำหนดในวันนั้น (0 = ไม่มีนัดวันนี้ หรือไม่เหลือยอดแล้ว)
+ * ใช้ได้ทั้งยอดปกติ (หักจากต้นคงเหลือ) และยอดตาย (หักจากยอดที่ตรึงไว้) —
+ * ยอดตายที่ไม่มีงวดตายตัวอาศัยนัดคืนต้นนี่แหละเป็นตัวโผล่ในหน้าเก็บวันนี้
+ */
+export function appointmentDue(
+  loan: Pick<
+    Loan,
+    | 'status'
+    | 'outstandingPrincipal'
+    | 'deadBalance'
+    | 'principalDueDate'
+    | 'principalDueAmount'
+  >,
+  day: string,
+): number {
+  if (loan.principalDueDate !== day) return 0;
+  const frozen =
+    loan.status === LoanStatus.DEAD || loan.status === LoanStatus.INSTALLMENT;
+  const balance = frozen ? (loan.deadBalance ?? 0) : loan.outstandingPrincipal;
+  if (!(balance > 0)) return 0;
+  return Math.min(loan.principalDueAmount ?? balance, balance);
+}
+
+/**
  * ยอดกู้นี้เข้าช่องไหนของหน้ายอดค้าง (null = ไม่เข้าหน้านี้)
  * - ยอดปกติ → ดอกที่ค้างสะสม
  * - ผ่อนงวด (จบต้นจบดอก) → เฉพาะ "งวดที่ค้าง" เท่านั้น ไม่ใช่ยอดตาย
@@ -140,25 +164,14 @@ export class DashboardService {
     const dueInterest = cycle?.interestDue ?? 0;
     const remainingInterest = cycle?.interestRemaining ?? 0;
 
-    // นัดคืนต้น: ถึงวันนัดแล้วโชว์เป็นยอดที่ต้องรับ (ไม่ระบุยอด = ทั้งต้นคงเหลือ)
-    let duePrincipal = 0;
-    if (!frozen && loan.principalDueDate === day) {
-      duePrincipal = Math.min(
-        loan.principalDueAmount ?? loan.outstandingPrincipal,
-        loan.outstandingPrincipal,
-      );
-    }
-    const principalPaidThatDay = (loan.payments ?? [])
-      .filter((p) => p.paidDate === day && !p.onDeadLoan)
-      .reduce((s, p) => s + p.principalPaid, 0);
-    const remainingPrincipal = Math.max(
-      0,
-      round2(duePrincipal - principalPaidThatDay),
-    );
+    const duePrincipal = appointmentDue(loan, day);
 
     // ยอดตาย/ผ่อนงวดที่ถึงกำหนดวันนี้
+    // มีนัดคืนต้นวันเดียวกัน = ยึดตามที่นัด (นัดคือข้อตกลงเฉพาะวันนั้น ไม่บวกซ้ำกับงวด)
     let dueInstallment = 0;
-    if (loan.status === LoanStatus.DEAD) {
+    if (frozen && duePrincipal > 0) {
+      dueInstallment = 0;
+    } else if (loan.status === LoanStatus.DEAD) {
       if (this.loansService.isDueOn(loan, day)) {
         dueInstallment = Math.min(
           loan.installmentAmount ?? 0,
@@ -169,12 +182,14 @@ export class DashboardService {
       dueInstallment =
         this.loansService.buildInstallmentSchedule(loan, day)?.dueNow ?? 0;
     }
-    const deadPaidThatDay = (loan.payments ?? [])
-      .filter((p) => p.paidDate === day && p.onDeadLoan)
-      .reduce((s, p) => s + p.amount, 0);
-    const remainingInstallment = Math.max(
+
+    // ยอดตาย/ผ่อนงวดรับเป็นเงินก้อนเดียว (onDeadLoan) ยอดปกติดูเฉพาะส่วนที่ตัดต้น
+    const paidTowardBalance = (loan.payments ?? [])
+      .filter((p) => p.paidDate === day && p.onDeadLoan === frozen)
+      .reduce((s, p) => s + (frozen ? p.amount : p.principalPaid), 0);
+    const remainingBalanceDue = Math.max(
       0,
-      round2(dueInstallment - deadPaidThatDay),
+      round2(duePrincipal + dueInstallment - paidTowardBalance),
     );
 
     const paidToday = round2(
@@ -197,9 +212,7 @@ export class DashboardService {
       dueInstallment,
       dueTotal: round2(dueInterest + duePrincipal + dueInstallment),
       paidToday,
-      remainingToday: round2(
-        remainingInterest + remainingPrincipal + remainingInstallment,
-      ),
+      remainingToday: round2(remainingInterest + remainingBalanceDue),
       principalDueDate: loan.principalDueDate,
       note: loan.note,
     };
