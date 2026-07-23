@@ -70,20 +70,41 @@ export function appointmentDue(
     | 'status'
     | 'outstandingPrincipal'
     | 'deadBalance'
+    | 'deadDate'
+    | 'installmentCount'
     | 'principalDueDate'
     | 'principalDueAmount'
   >,
   day: string,
 ): number {
   if (loan.principalDueDate !== day) return 0;
+  // ปิดยอด/ตัดหนี้สูญแล้ว ไม่เหลืออะไรให้เก็บตามนัด
+  if (loan.status === LoanStatus.CLOSED || loan.status === LoanStatus.BAD_DEBT)
+    return 0;
   // ผ่อนงวดมีตารางงวดของตัวเองอยู่แล้ว ไม่ใช้นัดคืนต้น
   if (loan.status === LoanStatus.INSTALLMENT) return 0;
-  const balance =
-    loan.status === LoanStatus.DEAD
-      ? (loan.deadBalance ?? 0)
-      : loan.outstandingPrincipal;
+  // ยอดตายดูยอดที่ตรึงไว้ ไม่ใช่ต้นคงเหลือ (ต้นของยอดตายถูกแช่ไว้เฉยๆ ไม่ลดตามที่จ่าย)
+  const balance = hasFrozenBalance(loan)
+    ? (loan.deadBalance ?? 0)
+    : loan.outstandingPrincipal;
   if (!(balance > 0)) return 0;
   return Math.min(loan.principalDueAmount ?? balance, balance);
+}
+
+/**
+ * ยอดนี้ตรึงยอดคงเหลือไว้ก้อนเดียว (ยอดตาย/ผ่อนงวด) แทนที่จะแยกต้น/ค้าง
+ * ดูจาก deadDate/installmentCount ไม่ใช่สถานะ เพราะสถานะเปลี่ยนเป็น CLOSED ได้
+ * แต่ต้น/ค้างเดิมยังถูกแช่ค้างไว้ที่ค่าเก่า — อ่านผิดตัวแล้วยอดที่จ่ายจบไปแล้วจะเด้งกลับมา
+ */
+function hasFrozenBalance(
+  loan: Pick<Loan, 'status' | 'deadDate' | 'installmentCount'>,
+): boolean {
+  return (
+    loan.status === LoanStatus.DEAD ||
+    loan.status === LoanStatus.INSTALLMENT ||
+    loan.deadDate != null ||
+    loan.installmentCount != null
+  );
 }
 
 /**
@@ -212,8 +233,8 @@ export class DashboardService {
 
   /** ยอดที่ต้องเก็บของยอดกู้หนึ่งก้อนในวันที่เลือก (ยอดค้างแยกออก ไม่รวมใน dueTotal) */
   private dayItem(loan: Loan, day: string): DayLoanItem {
-    const frozen =
-      loan.status === LoanStatus.DEAD || loan.status === LoanStatus.INSTALLMENT;
+    // ดูจากชนิดยอด ไม่ใช่สถานะ — ยอดตายที่ปิดไปแล้วยังต้องอ่าน deadBalance อยู่
+    const frozen = hasFrozenBalance(loan);
 
     // ดอกรอบที่ครบกำหนดวันนี้ — หักที่จ่ายมาแล้วในรอบ (จ่ายล่วงหน้า/แบ่งจ่าย)
     const cycle = this.loansService.cycleStatusOn(loan, day);

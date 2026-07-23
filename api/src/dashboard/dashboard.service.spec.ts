@@ -115,6 +115,8 @@ describe('appointmentDue — นัดคืนต้นที่ถึงกำ
     status: LoanStatus.ACTIVE,
     outstandingPrincipal: 5_000,
     deadBalance: null,
+    deadDate: null,
+    installmentCount: null,
     principalDueDate: '2026-07-25',
     principalDueAmount: null,
     ...over,
@@ -123,6 +125,7 @@ describe('appointmentDue — นัดคืนต้นที่ถึงกำ
   it('ยอดตายลงนัดคืนไว้ → ถึงวันนัดโผล่เป็นยอดที่ต้องรับ', () => {
     const l = withAppt({
       status: LoanStatus.DEAD,
+      deadDate: '2026-07-20',
       deadBalance: 7_000,
       principalDueAmount: 1_000,
     });
@@ -132,11 +135,30 @@ describe('appointmentDue — นัดคืนต้นที่ถึงกำ
   it('ยอดตายไม่ระบุยอดที่นัด → ทั้งยอดตายคงเหลือ (ไม่ใช่ต้นคงเหลือ)', () => {
     const l = withAppt({
       status: LoanStatus.DEAD,
+      deadDate: '2026-07-20',
       deadBalance: 7_000,
       outstandingPrincipal: 5_000,
       principalDueAmount: null,
     });
     expect(appointmentDue(l, '2026-07-25')).toBe(7_000);
+  });
+
+  it('ยอดตายที่จ่ายครบจนปิดยอดวันนั้น → ต้องไม่เด้งยอดกลับมาให้เก็บอีก', () => {
+    // ต้นคงเหลือของยอดตายถูกแช่ไว้ที่ค่าเดิม (10,000) แม้จ่ายจบแล้ว
+    // ต้องอ่านจากยอดตายคงเหลือ (0) ไม่ใช่ต้นคงเหลือ
+    const l = withAppt({
+      status: LoanStatus.CLOSED,
+      deadDate: '2026-07-21',
+      deadBalance: 0,
+      outstandingPrincipal: 10_000,
+      principalDueAmount: null,
+    });
+    expect(appointmentDue(l, '2026-07-25')).toBe(0);
+  });
+
+  it('ยอดที่ตัดหนี้สูญแล้ว → ไม่ทวงตามนัด', () => {
+    const l = withAppt({ status: LoanStatus.BAD_DEBT });
+    expect(appointmentDue(l, '2026-07-25')).toBe(0);
   });
 
   it('ยอดปกติไม่ระบุยอดที่นัด → ทั้งต้นคงเหลือ', () => {
