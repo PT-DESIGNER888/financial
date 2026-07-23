@@ -110,6 +110,34 @@ export function remainingBalanceOnDay(input: {
 }
 
 /**
+ * แยกงวดผ่อนออกเป็น "ค้างเก่า" กับ "ของวันนี้"
+ *
+ * ตารางผ่อนคิด dueNow เป็นยอดสะสม (งวดค้าง + งวดวันนี้) ก้อนเดียว ทำให้ยอดที่
+ * ต้องเก็บของวันนั้นไม่ใช่ยอดจริงของวัน — ค้างไว้ 3 วันแล้วยอดวันนี้พองเป็น 4 งวด
+ * แยกออกจากกันเพื่อให้เก็บตามยอดจริงของวัน ส่วนที่ค้างไปโชว์เป็นยอดค้าง (ตัวแดง)
+ * งวดที่ครบกำหนด "วันนี้" ยังไม่ถือว่าค้าง — เหมือนดอกของยอดปกติที่เข้ายอดค้าง
+ * ต่อเมื่อเลยวันครบกำหนดไปแล้ว
+ */
+export function splitInstallmentDue(
+  rows: { dueDate: string; scheduled: number; paid: number }[],
+  day: string,
+): { overdue: number; dueToday: number; scheduledToday: number } {
+  let overdue = 0;
+  let dueToday = 0;
+  let scheduledToday = 0;
+  for (const r of rows) {
+    const unpaid = Math.max(0, round2(r.scheduled - r.paid));
+    if (r.dueDate === day) {
+      scheduledToday = round2(scheduledToday + r.scheduled);
+      dueToday = round2(dueToday + unpaid);
+    } else if (r.dueDate < day) {
+      overdue = round2(overdue + unpaid);
+    }
+  }
+  return { overdue, dueToday, scheduledToday };
+}
+
+/**
  * ยอดกู้นี้เข้าช่องไหนของหน้ายอดค้าง (null = ไม่เข้าหน้านี้)
  * - ยอดปกติ → ดอกที่ค้างสะสม
  * - ผ่อนงวด (จบต้นจบดอก) → เฉพาะ "งวดที่ค้าง" เท่านั้น ไม่ใช่ยอดตาย
@@ -118,15 +146,17 @@ export function remainingBalanceOnDay(input: {
  */
 export function arrearsBucket(
   loan: Pick<Loan, 'status' | 'arrears' | 'deadBalance'>,
-  /** ยอดงวดที่ถึงกำหนดแล้วยังไม่จ่าย (เฉพาะผ่อนงวด) */
-  dueNow: number,
+  /** ผ่อนงวด: งวดที่ "เลยกำหนด" แล้วยังไม่จ่าย — งวดของวันนี้ยังไม่ถือว่าค้าง */
+  installmentOverdue: number,
 ): { bucket: 'ARREARS' | 'DEAD'; amount: number } | null {
   if (loan.status === LoanStatus.ACTIVE)
     return loan.arrears > 0
       ? { bucket: 'ARREARS', amount: loan.arrears }
       : null;
   if (loan.status === LoanStatus.INSTALLMENT)
-    return dueNow > 0 ? { bucket: 'ARREARS', amount: dueNow } : null;
+    return installmentOverdue > 0
+      ? { bucket: 'ARREARS', amount: installmentOverdue }
+      : null;
   if (loan.status === LoanStatus.DEAD && (loan.deadBalance ?? 0) > 0)
     return { bucket: 'DEAD', amount: loan.deadBalance ?? 0 };
   return null;
@@ -196,6 +226,7 @@ export class DashboardService {
     // มีนัดคืนต้นวันเดียวกัน = ยึดตามที่นัด (นัดคือข้อตกลงเฉพาะวันนั้น ไม่บวกซ้ำกับงวด)
     let dueInstallment = 0;
     let installmentDueNow = 0;
+    let installmentArrears = 0;
     if (frozen && duePrincipal > 0) {
       dueInstallment = 0;
     } else if (loan.status === LoanStatus.DEAD) {
@@ -207,16 +238,13 @@ export class DashboardService {
       }
     } else if (loan.status === LoanStatus.INSTALLMENT) {
       const sch = this.loansService.buildInstallmentSchedule(loan, day);
-      installmentDueNow = sch?.dueNow ?? 0;
-      // ยอดเต็มของวัน = งวดที่ครบกำหนดวันนั้น หรือยอดค้างสะสมถ้ามากกว่า
-      // ต้องใช้ยอดเต็ม (ไม่ใช่ยอดสุทธิ) ไม่งั้นงวดที่จ่ายล่วงหน้ามาแล้วจะหาย
-      // จากหน้าเก็บวันนี้ทั้งที่ถึงกำหนดวันนั้น — ยอดปกติโชว์ทุกวันครบกำหนดอยู่แล้ว
-      const scheduledToday = round2(
-        (sch?.rows ?? [])
-          .filter((r) => r.dueDate === day)
-          .reduce((s, r) => s + r.scheduled, 0),
-      );
-      dueInstallment = Math.max(installmentDueNow, scheduledToday);
+      const split = splitInstallmentDue(sch?.rows ?? [], day);
+      installmentArrears = split.overdue;
+      installmentDueNow = split.dueToday;
+      // ยอดเต็มของวัน = งวดที่ครบกำหนดวันนั้น (ไม่รวมงวดค้างเก่า)
+      // ต้องใช้ยอดเต็ม ไม่ใช่ยอดสุทธิ ไม่งั้นงวดที่จ่ายล่วงหน้ามาแล้วจะหาย
+      // จากหน้าเก็บวันนี้ทั้งที่ถึงกำหนดวันนั้น
+      dueInstallment = split.scheduledToday;
     }
 
     // ยอดตาย/ผ่อนงวดรับเป็นเงินก้อนเดียว (onDeadLoan) ยอดปกติดูเฉพาะส่วนที่ตัดต้น
@@ -244,8 +272,14 @@ export class DashboardService {
       cycle: loan.cycle,
       outstandingPrincipal: loan.outstandingPrincipal,
       deadBalance: loan.deadBalance,
-      // ยอดตาย/ผ่อนงวด: ต้น/ค้างเดิมถูกตรึงเข้า deadBalance แล้ว ไม่นับซ้ำ
-      arrears: frozen ? 0 : loan.arrears,
+      // ผ่อนงวด: งวดที่เลยกำหนดแล้วยังไม่จ่าย (แยกจากงวดของวันนี้)
+      // ยอดตาย: ต้น/ค้างเดิมถูกตรึงเข้า deadBalance แล้ว ไม่นับซ้ำ
+      arrears:
+        loan.status === LoanStatus.INSTALLMENT
+          ? installmentArrears
+          : loan.status === LoanStatus.DEAD
+            ? 0
+            : loan.arrears,
       dueInterest,
       duePrincipal,
       dueInstallment,
@@ -376,9 +410,22 @@ export class DashboardService {
         .filter((l) => l.status === LoanStatus.ACTIVE)
         .reduce((s, l) => s + l.arrears, 0),
     );
+    const installmentLoans = all.filter(
+      (l) => l.status === LoanStatus.INSTALLMENT,
+    );
+    const installmentBalance = round2(
+      installmentLoans.reduce((s, l) => s + (l.deadBalance ?? 0), 0),
+    );
+    // งวดผ่อนที่เลยกำหนดแล้ว — เป็นส่วนหนึ่งของยอดผ่อนคงเหลือ ไม่บวกซ้ำในยอดรวม
+    const installmentOverdue = round2(
+      installmentLoans.reduce((s, l) => {
+        const sch = this.loansService.buildInstallmentSchedule(l, day);
+        return s + splitInstallmentDue(sch?.rows ?? [], day).overdue;
+      }, 0),
+    );
     const deadTotal = round2(
       all
-        .filter((l) => l.status !== LoanStatus.ACTIVE)
+        .filter((l) => l.status === LoanStatus.DEAD)
         .reduce((s, l) => s + (l.deadBalance ?? 0), 0),
     );
     const principalTotal = round2(
@@ -401,9 +448,14 @@ export class DashboardService {
       remainingToday: group?.remainingToday ?? 0,
       outstandingPrincipal: principalTotal,
       arrearsTotal,
+      installmentBalance,
+      /** ส่วนของยอดผ่อนคงเหลือที่เลยกำหนดแล้ว (อยู่ใน installmentBalance แล้ว) */
+      installmentOverdue,
       deadTotal,
-      /** ยอดคงเหลือทั้งหมดที่ลูกหนี้ยังติดอยู่ */
-      balanceTotal: round2(principalTotal + arrearsTotal + deadTotal),
+      /** ยอดคงเหลือทั้งหมดที่ลูกหนี้ยังติดอยู่ (ไม่มีส่วนไหนนับซ้ำ) */
+      balanceTotal: round2(
+        principalTotal + arrearsTotal + installmentBalance + deadTotal,
+      ),
     };
   }
 
@@ -461,12 +513,16 @@ export class DashboardService {
     const overdue: { loan: Loan; amount: number }[] = [];
     const dead: { loan: Loan; amount: number }[] = [];
     for (const loan of loans) {
-      const dueNow =
+      // เฉพาะงวดที่เลยกำหนดแล้ว — งวดของวันนี้ไปโผล่ที่หน้าเก็บวันนี้แทน
+      const installmentOverdue =
         loan.status === LoanStatus.INSTALLMENT
-          ? (this.loansService.buildInstallmentSchedule(loan, today)?.dueNow ??
-            0)
+          ? splitInstallmentDue(
+              this.loansService.buildInstallmentSchedule(loan, today)?.rows ??
+                [],
+              today,
+            ).overdue
           : 0;
-      const slot = arrearsBucket(loan, dueNow);
+      const slot = arrearsBucket(loan, installmentOverdue);
       if (!slot) continue;
       (slot.bucket === 'DEAD' ? dead : overdue).push({
         loan,

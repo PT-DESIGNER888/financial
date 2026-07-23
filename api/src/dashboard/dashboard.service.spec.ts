@@ -4,6 +4,7 @@ import {
   appointmentDue,
   arrearsBucket,
   remainingBalanceOnDay,
+  splitInstallmentDue,
 } from './dashboard.service';
 
 type BucketInput = Pick<Loan, 'status' | 'arrears' | 'deadBalance'>;
@@ -57,6 +58,54 @@ describe('arrearsBucket — จัดยอดเข้าช่องในห�
         0,
       ),
     ).toBeNull();
+  });
+});
+
+describe('splitInstallmentDue — แยกงวดค้างเก่าออกจากงวดของวันนี้', () => {
+  // ผ่อนรายวัน งวดละ 100 เริ่ม 22 ก.ค.
+  const rows = (paidPerRow: number[]) =>
+    paidPerRow.map((paid, i) => ({
+      dueDate: `2026-07-${22 + i}`,
+      scheduled: 100,
+      paid,
+    }));
+
+  it('ค้างมา 2 งวด — ยอดวันนี้ต้องเป็นงวดเดียว ไม่พองเป็น 3 งวด', () => {
+    // 22,23 ยังไม่จ่าย · 24 = วันนี้
+    const r = splitInstallmentDue(rows([0, 0, 0]), '2026-07-24');
+    expect(r.dueToday).toBe(100); // เก็บตามยอดจริงของวัน
+    expect(r.overdue).toBe(200); // ที่ค้างไปโชว์เป็นตัวแดงแยก
+  });
+
+  it('ไม่ค้างเลย — วันนี้เก็บงวดเดียวตามปกติ', () => {
+    const r = splitInstallmentDue(rows([100, 100, 0]), '2026-07-24');
+    expect(r).toMatchObject({ dueToday: 100, overdue: 0 });
+  });
+
+  it('งวดวันนี้ยังไม่ถือว่าค้าง (เหมือนดอกของยอดปกติ)', () => {
+    const r = splitInstallmentDue(rows([100, 0]), '2026-07-23');
+    expect(r.overdue).toBe(0);
+    expect(r.dueToday).toBe(100);
+  });
+
+  it('จ่ายงวดวันนี้มาแล้วบางส่วน — เหลือเท่าที่ยังขาด', () => {
+    const r = splitInstallmentDue(
+      [{ dueDate: '2026-07-23', scheduled: 100, paid: 40 }],
+      '2026-07-23',
+    );
+    expect(r.dueToday).toBe(60);
+    expect(r.scheduledToday).toBe(100); // ยอดเต็มของวันยังเป็น 100
+  });
+
+  it('จ่ายล่วงหน้ามาแล้ว — ยอดเต็มของวันยังโชว์ แต่ไม่ต้องเก็บเพิ่ม', () => {
+    const r = splitInstallmentDue(rows([100, 100]), '2026-07-23');
+    expect(r.dueToday).toBe(0);
+    expect(r.scheduledToday).toBe(100);
+  });
+
+  it('งวดในอนาคตไม่ถูกดึงมารวมกับวันนี้', () => {
+    const r = splitInstallmentDue(rows([0, 0, 0]), '2026-07-22');
+    expect(r).toMatchObject({ overdue: 0, dueToday: 100 });
   });
 });
 

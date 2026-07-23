@@ -312,6 +312,10 @@ export interface BillData {
   remainingToday: number;
   outstandingPrincipal: number;
   arrearsTotal: number;
+  /** ยอดผ่อนงวดที่เหลือทั้งหมด */
+  installmentBalance: number;
+  /** ส่วนของยอดผ่อนที่เลยกำหนดแล้ว (อยู่ใน installmentBalance แล้ว ไม่บวกซ้ำ) */
+  installmentOverdue: number;
   deadTotal: number;
   balanceTotal: number;
 }

@@ -12,6 +12,7 @@ import {
   IconCheck,
   IconClock,
   IconOut,
+  IconOverdue,
   IconReceive,
   IconUsers,
 } from '@/components/icons';
@@ -379,8 +380,12 @@ function DebtorCard({
             href="/arrears"
             className="flex items-center justify-between gap-2 rounded-xl border border-red-100 bg-red-50/60 px-3.5 py-2.5 text-sm transition-colors hover:bg-red-50 dark:border-red-500/20 dark:bg-red-500/10"
           >
-            <span className="text-red-700 dark:text-red-400">
-              ยอดค้างเก่าสะสม
+            <span className="inline-flex items-center gap-1.5 text-red-700 dark:text-red-400">
+              <IconOverdue className="size-4 shrink-0 stroke-[1.75]" />
+              มียอดค้างเก่า
+              <span className="text-red-600/70 dark:text-red-400/70">
+                (ไม่รวมยอดวันนี้)
+              </span>
             </span>
             <span
               data-money
@@ -455,6 +460,12 @@ function LoanRow({ item, onPay }: { item: TodayItem; onPay: () => void }) {
             <span className="text-sky-700 dark:text-sky-400">
               {' '}
               · ส่งล่วงหน้าไว้แล้ว
+            </span>
+          )}
+          {item.arrears > 0 && (
+            <span className="font-medium text-red-600 dark:text-red-400">
+              {' '}
+              · ค้าง ฿{baht(item.arrears)}
             </span>
           )}
         </p>

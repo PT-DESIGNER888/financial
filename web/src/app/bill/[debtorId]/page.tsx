@@ -146,6 +146,16 @@ function BillView({ debtorId, date }: { debtorId: string; date: string }) {
           {data.arrearsTotal > 0 && (
             <Line label="ยอดค้างสะสม" value={data.arrearsTotal} danger />
           )}
+          {data.installmentBalance > 0 && (
+            <Line label="ยอดผ่อนคงเหลือ" value={data.installmentBalance} muted />
+          )}
+          {data.installmentOverdue > 0 && (
+            <Line
+              label="— งวดที่เลยกำหนดแล้ว"
+              value={data.installmentOverdue}
+              danger
+            />
+          )}
           {data.deadTotal > 0 && (
             <Line label="ยอดตายคงเหลือ" value={data.deadTotal} muted />
           )}
@@ -248,6 +258,10 @@ function billText(b: BillData): string {
   lines.push(`ต้องส่งอีก ฿${baht(b.remainingToday)}`, '');
   lines.push(`เงินต้นคงเหลือ ฿${baht(b.outstandingPrincipal)}`);
   if (b.arrearsTotal > 0) lines.push(`ยอดค้างสะสม ฿${baht(b.arrearsTotal)}`);
+  if (b.installmentBalance > 0)
+    lines.push(`ยอดผ่อนคงเหลือ ฿${baht(b.installmentBalance)}`);
+  if (b.installmentOverdue > 0)
+    lines.push(`  งวดที่เลยกำหนดแล้ว ฿${baht(b.installmentOverdue)}`);
   if (b.deadTotal > 0) lines.push(`ยอดตายคงเหลือ ฿${baht(b.deadTotal)}`);
   lines.push(`รวมทั้งหมด ฿${baht(b.balanceTotal)}`);
   return lines.join('\n');
