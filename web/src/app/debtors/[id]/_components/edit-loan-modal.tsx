@@ -3,6 +3,12 @@
 import { useState } from 'react';
 import { DatePicker } from '@/components/date-picker';
 import { Field, ModalButtons, Segmented, TextInput } from '@/components/form';
+import { RateInput } from '@/components/rate-input';
+import {
+  bahtToPercent,
+  MAX_RATE_PERCENT,
+  type RateUnit,
+} from '@/lib/interest';
 import { useEditLoan } from '@/lib/hooks/useLoans';
 import { LoanCycle } from '@/lib/types';
 import type { Loan, RevolvingCycle } from '@/lib/types';
@@ -18,6 +24,15 @@ export function EditLoanModal({
   onSaved: () => void;
 }) {
   const [rate, setRate] = useState(String(loan.interestRatePercent));
+  const [rateUnit, setRateUnit] = useState<RateUnit>('PERCENT');
+  // ฐานคำนวณดอก — ดอกคงที่คิดจากต้นเดิม ดอกลอยคิดจากต้นคงเหลือ
+  const rateBase =
+    loan.interestMode === 'FLAT'
+      ? loan.principalOriginal
+      : loan.outstandingPrincipal;
+  const typedRate = parseFloat(rate) || 0;
+  const ratePercent =
+    rateUnit === 'PERCENT' ? typedRate : bahtToPercent(rateBase, typedRate);
   // แก้เงื่อนไขได้เฉพาะยอดดอกลอย/คงที่ (รายวัน / 7 วัน / 10 วัน)
   const [cycle, setCycle] = useState<RevolvingCycle>(
     loan.cycle === LoanCycle.MONTHLY ? LoanCycle.DAILY : loan.cycle,
@@ -31,9 +46,13 @@ export function EditLoanModal({
   const edit = useEditLoan();
 
   const save = async () => {
-    const r = parseFloat(rate);
+    const r = ratePercent;
     if (!r || r <= 0) {
       setError('อัตราดอกต้องมากกว่า 0');
+      return;
+    }
+    if (r > MAX_RATE_PERCENT) {
+      setError('ดอกต่อรอบสูงเกินกว่าที่ระบบเก็บได้');
       return;
     }
     const amount = dueAmount.trim() === '' ? undefined : parseFloat(dueAmount);
@@ -61,16 +80,14 @@ export function EditLoanModal({
 
   return (
     <ModalShell title="แก้เงื่อนไขยอดกู้" onClose={onClose}>
-      <Field label="ดอก %/รอบ">
-        <TextInput
-          type="number"
-          step="0.001"
-          inputMode="decimal"
-          align="right"
-          value={rate}
-          onChange={(e) => setRate(e.target.value)}
-        />
-      </Field>
+      <RateInput
+        base={rateBase}
+        unit={rateUnit}
+        onUnitChange={setRateUnit}
+        value={rate}
+        onChange={setRate}
+        label="ดอกต่อรอบ"
+      />
       <Field label="รอบเก็บ">
         <Segmented
           value={cycle}
@@ -117,8 +134,9 @@ export function EditLoanModal({
       <Field label="หมายเหตุ">
         <TextInput value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
-      <p className="text-xs text-gray-400">
-        * แก้อัตราดอกมีผลกับรอบถัดไป ยอดค้างเดิมไม่เปลี่ยน
+      <p className="text-xs leading-relaxed text-gray-400">
+        * แก้อัตราดอกมีผลกับรอบถัดไป ยอดค้างเดิมไม่เปลี่ยน — ถ้ารอบที่กำลังเดิน
+        คิดดอกผิดไปแล้ว แก้ที่ &ldquo;เลื่อนวัน / แก้ดอก&rdquo; ของรอบนั้น
       </p>
       {error && <p className="text-sm text-red-500">{error}</p>}
       <ModalButtons onClose={onClose} onSave={save} saving={edit.isPending} />

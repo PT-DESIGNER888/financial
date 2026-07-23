@@ -13,8 +13,15 @@ import {
   SelectMenu,
   TextInput,
 } from '@/components/form';
+import { RateInput } from '@/components/rate-input';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht, cycleLabel, thaiDate } from '@/lib/format';
+import {
+  bahtToPercent,
+  interestBaht,
+  MAX_RATE_PERCENT,
+  type RateUnit,
+} from '@/lib/interest';
 import { useDebtors } from '@/lib/hooks/useDebtors';
 import {
   useCreateLoan,
@@ -662,6 +669,7 @@ function RevolvingForm({
   const [startDate, setStartDate] = useState(todayISO());
   const [principal, setPrincipal] = useState('');
   const [rate, setRate] = useState('');
+  const [rateUnit, setRateUnit] = useState<RateUnit>('PERCENT');
   const [cycle, setCycle] = useState<RevolvingCycle>(LoanCycle.DAILY);
   const [interestMode, setInterestMode] = useState<InterestMode>(InterestMode.FLOATING);
   const [isExisting, setIsExisting] = useState(false);
@@ -671,14 +679,17 @@ function RevolvingForm({
   const [error, setError] = useState('');
 
   const principalNum = parseFloat(principal) || 0;
-  const rateNum = parseFloat(rate) || 0;
   const base =
     interestMode === InterestMode.FLAT
       ? principalNum
       : isExisting && outstanding
         ? parseFloat(outstanding) || 0
         : principalNum;
-  const interestPerCycle = Math.round((base * rateNum) / 100);
+  // กรอกเป็นบาทได้ แต่เก็บลงระบบเป็น % เสมอ
+  const typedRate = parseFloat(rate) || 0;
+  const rateNum =
+    rateUnit === 'PERCENT' ? typedRate : bahtToPercent(base, typedRate);
+  const interestPerCycle = interestBaht(base, rateNum);
 
   const createLoan = useCreateLoan();
   const submit = async () => {
@@ -686,6 +697,8 @@ function RevolvingForm({
     if (!debtorId) return setError('เลือกลูกหนี้ก่อน');
     if (!(principalNum > 0)) return setError('เงินต้นต้องมากกว่า 0');
     if (!(rateNum > 0)) return setError('อัตราดอกต้องมากกว่า 0');
+    if (rateNum > MAX_RATE_PERCENT)
+      return setError('ดอกต่อรอบสูงเกินกว่าที่ระบบเก็บได้');
     try {
       await createLoan.mutateAsync({
         debtorId,
@@ -722,14 +735,12 @@ function RevolvingForm({
           onChange={(e) => setPrincipal(e.target.value)}
         />
 
-        <FormInput
-          label="ดอก %/รอบ *"
-          type="number"
-          step="0.001"
-          inputMode="decimal"
-          align="right"
+        <RateInput
+          base={base}
+          unit={rateUnit}
+          onUnitChange={setRateUnit}
           value={rate}
-          onChange={(e) => setRate(e.target.value)}
+          onChange={setRate}
         />
 
         <Field label="รอบเก็บ *">
@@ -808,6 +819,7 @@ function RevolvingForm({
               value={`฿${baht(interestPerCycle)}`}
               bold
             />
+            <SummaryRow label="คิดเป็นอัตรา" value={`${rateNum}% ต่อรอบ`} />
             <SummaryRow
               label="รูปแบบ"
               value={
