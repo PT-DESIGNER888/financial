@@ -33,6 +33,33 @@ export function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/**
+ * แยกงวดผ่อนออกเป็น "ค้างเก่า" กับ "ของวันนี้"
+ *
+ * ตารางผ่อนคิดยอดค้างเป็นก้อนสะสม (งวดค้าง + งวดวันนี้) ทำให้ยอดที่ต้องเก็บของวัน
+ * ไม่ใช่ยอดจริง และป้าย "ค้างชำระ" ขึ้นทั้งที่แค่ถึงกำหนดวันนี้ ยังไม่เลยกำหนด
+ * งวดที่ครบกำหนด "วันนี้" ยังไม่ถือว่าค้าง — ค้างต่อเมื่อข้ามวันไปแล้ว
+ * (เหมือนดอกของยอดปกติที่เข้ายอดค้างต่อเมื่อเลยวันครบกำหนด)
+ */
+export function splitInstallmentDue(
+  rows: { dueDate: string; scheduled: number; paid: number }[],
+  day: string,
+): { overdue: number; dueToday: number; scheduledToday: number } {
+  let overdue = 0;
+  let dueToday = 0;
+  let scheduledToday = 0;
+  for (const r of rows) {
+    const unpaid = Math.max(0, round2(r.scheduled - r.paid));
+    if (r.dueDate === day) {
+      scheduledToday = round2(scheduledToday + r.scheduled);
+      dueToday = round2(dueToday + unpaid);
+    } else if (r.dueDate < day) {
+      overdue = round2(overdue + unpaid);
+    }
+  }
+  return { overdue, dueToday, scheduledToday };
+}
+
 export function cycleLabelTh(c: LoanCycle): string {
   return {
     DAILY: 'รายวัน',

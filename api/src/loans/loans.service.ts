@@ -24,6 +24,7 @@ import {
   defaultFirstDue,
   dueDateAt,
   round2,
+  splitInstallmentDue,
   type InstallmentPlan,
   type PlanRow,
 } from './installment-plan';
@@ -572,7 +573,8 @@ export class LoansService {
     let nextDueDate: string | null = null;
     if (loan.status === LoanStatus.INSTALLMENT) {
       const s = this.buildInstallmentSchedule(loan);
-      overdue = (s?.dueNow ?? 0) > 0;
+      // ค้างเฉพาะงวดที่ "เลยกำหนด" แล้ว — งวดที่ครบกำหนดวันนี้ยังไม่ถือว่าค้าง
+      overdue = splitInstallmentDue(s?.rows ?? [], today).overdue > 0;
       nextDueDate = s?.nextDueDate ?? null;
     } else if (
       loan.status === LoanStatus.ACTIVE ||

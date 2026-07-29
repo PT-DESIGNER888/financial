@@ -6,7 +6,9 @@ import { LoanStatus } from '../common/enums';
 import { Debtor } from '../entities/debtor.entity';
 import { Loan } from '../entities/loan.entity';
 import { Payment } from '../entities/payment.entity';
-import { round2 } from '../loans/installment-plan';
+import { round2, splitInstallmentDue } from '../loans/installment-plan';
+// re-export ให้เทสเดิมที่ import จาก dashboard.service ใช้ได้ต่อ
+export { splitInstallmentDue } from '../loans/installment-plan';
 import { LoansService } from '../loans/loans.service';
 
 /** รายการเก็บของยอดกู้หนึ่งก้อนในวันที่เลือก */
@@ -128,34 +130,6 @@ export function remainingBalanceOnDay(input: {
     0,
     round2(input.duePrincipal + input.dueInstallment - input.paidTowardBalance),
   );
-}
-
-/**
- * แยกงวดผ่อนออกเป็น "ค้างเก่า" กับ "ของวันนี้"
- *
- * ตารางผ่อนคิด dueNow เป็นยอดสะสม (งวดค้าง + งวดวันนี้) ก้อนเดียว ทำให้ยอดที่
- * ต้องเก็บของวันนั้นไม่ใช่ยอดจริงของวัน — ค้างไว้ 3 วันแล้วยอดวันนี้พองเป็น 4 งวด
- * แยกออกจากกันเพื่อให้เก็บตามยอดจริงของวัน ส่วนที่ค้างไปโชว์เป็นยอดค้าง (ตัวแดง)
- * งวดที่ครบกำหนด "วันนี้" ยังไม่ถือว่าค้าง — เหมือนดอกของยอดปกติที่เข้ายอดค้าง
- * ต่อเมื่อเลยวันครบกำหนดไปแล้ว
- */
-export function splitInstallmentDue(
-  rows: { dueDate: string; scheduled: number; paid: number }[],
-  day: string,
-): { overdue: number; dueToday: number; scheduledToday: number } {
-  let overdue = 0;
-  let dueToday = 0;
-  let scheduledToday = 0;
-  for (const r of rows) {
-    const unpaid = Math.max(0, round2(r.scheduled - r.paid));
-    if (r.dueDate === day) {
-      scheduledToday = round2(scheduledToday + r.scheduled);
-      dueToday = round2(dueToday + unpaid);
-    } else if (r.dueDate < day) {
-      overdue = round2(overdue + unpaid);
-    }
-  }
-  return { overdue, dueToday, scheduledToday };
 }
 
 /**

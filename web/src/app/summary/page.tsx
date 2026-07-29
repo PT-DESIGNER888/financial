@@ -38,6 +38,7 @@ function SummaryView() {
       label: 'ต้นคงเหลือในตลาด',
       value: data.outstandingPrincipal,
       sub: `${data.counts.activeLoans} ยอดปกติ`,
+      wide: true,
     },
     {
       icon: (
@@ -50,11 +51,18 @@ function SummaryView() {
       color: 'text-red-600 dark:text-red-400',
     },
     {
+      icon: <IconDoc className="size-4.5 text-sky-600 dark:text-sky-400" />,
+      chip: 'bg-sky-50 dark:bg-sky-500/10',
+      label: 'ผ่อนงวดคงเหลือ',
+      value: data.installmentBalance,
+      sub: `${data.counts.installmentLoans} สัญญา · ยอดเป็น`,
+    },
+    {
       icon: <IconDoc className="size-4.5 text-gray-500 dark:text-gray-400" />,
       chip: 'bg-gray-100 dark:bg-gray-800',
-      label: 'ยอดตาย + ผ่อนงวด',
-      value: data.deadBalance + data.installmentBalance,
-      sub: `${data.counts.deadLoans} ยอดตาย · ${data.counts.installmentLoans} ผ่อนงวด`,
+      label: 'ยอดตายคงเหลือ',
+      value: data.deadBalance,
+      sub: `${data.counts.deadLoans} ยอดตาย`,
     },
     {
       icon: (
@@ -88,9 +96,14 @@ function SummaryView() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-200/80 dark:border-gray-800 dark:bg-gray-800">
-        <div className="grid grid-cols-2 gap-px lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px lg:grid-cols-5">
           {money.map((c) => (
-            <div key={c.label} className="bg-white p-4 lg:p-5 dark:bg-gray-900">
+            <div
+              key={c.label}
+              className={`bg-white p-4 lg:p-5 dark:bg-gray-900 ${
+                c.wide ? 'col-span-2 lg:col-span-1' : ''
+              }`}
+            >
               <div className="flex items-center gap-2.5">
                 <span
                   className={`flex size-9 items-center justify-center rounded-full ${c.chip}`}
