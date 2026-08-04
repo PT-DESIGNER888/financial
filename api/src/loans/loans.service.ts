@@ -702,17 +702,11 @@ export class LoansService {
     const startDate =
       input.startDate ?? (isLegacy ? addDays(todayStr(), -1) : todayStr());
     const yesterday = addDays(todayStr(), -1);
-    // ยอดเปิดใหม่:
-    //   รายวัน — firstDueDate = วันปล่อยกู้ (นับวันปล่อยเป็นวันที่ 1) เก็บดอกวันปล่อยเลย
-    //   รายสัปดาห์/ราย10วัน — firstDueDate = วันปล่อย + 1 รอบ (ดอกครบเมื่อครบรอบจริง
-    //     ไม่ใช่เก็บดอกเต็มรอบตั้งแต่วันปล่อยทั้งที่รอบยังไม่เดิน)
-    //   accruedThrough = วันก่อนปล่อย เพื่อให้งวดแรกยังค้างอยู่ให้เก็บ
+    // ยอดเปิดใหม่: firstDueDate = วันปล่อยกู้ (นับวันรับเงินเป็น "วันที่ 1") — งวด/ดอกแรก
+    //   เก็บตั้งแต่วันเปิดยอดเลย ทุกรอบ (รายวัน/สัปดาห์/10วัน)
+    //   accruedThrough = วันก่อนปล่อย เพื่อให้งวดแรก (วันปล่อย) ยังค้างอยู่ให้เก็บ
     // ยอดเก่า (legacy): firstDueDate = null (สูตรเดิม), ไม่ accrue ย้อนก่อนวันขึ้นระบบ
-    const firstDueDate = isLegacy
-      ? null
-      : input.cycle === LoanCycle.DAILY
-        ? startDate
-        : defaultFirstDue(startDate, input.cycle);
+    const firstDueDate = isLegacy ? null : startDate;
     const accruedThrough = isLegacy
       ? diffDays(startDate, yesterday) > 0
         ? yesterday
@@ -794,15 +788,17 @@ export class LoansService {
     roundInstallments?: boolean;
     cycle: LoanCycle;
     startDate?: string;
-  }): { plan: InstallmentPlan; startDate: string } {
+  }): { plan: InstallmentPlan; startDate: string; firstDueDate: string } {
     const count = input.installmentCount ?? 0;
     if (!Number.isInteger(count) || count < 1)
       throw new BadRequestException('จำนวนงวดต้องเป็นจำนวนเต็มตั้งแต่ 1 งวด');
     if (input.principalOriginal <= 0)
       throw new BadRequestException('เงินต้นต้องมากกว่า 0');
     const startDate = input.startDate ?? todayStr();
-    if (input.firstDueDate && diffDays(startDate, input.firstDueDate) <= 0)
-      throw new BadRequestException('วันเริ่มชำระต้องอยู่หลังวันปล่อยกู้');
+    if (input.firstDueDate && diffDays(startDate, input.firstDueDate) < 0)
+      throw new BadRequestException('วันเริ่มชำระต้องไม่ก่อนวันปล่อยกู้');
+    // นับวันรับเงินเป็น "วันที่ 1" — งวดแรกเก็บวันปล่อยเลย เว้นแต่ผู้ใช้เลือกวันเอง
+    const firstDueDate = input.firstDueDate ?? startDate;
 
     if (input.amortized) {
       if (!input.interestRatePercent || input.interestRatePercent <= 0)
@@ -826,14 +822,14 @@ export class LoansService {
       installmentCount: count,
       cycle: input.cycle,
       startDate,
-      firstDueDate: input.firstDueDate ?? null,
+      firstDueDate,
       amortized: input.amortized,
       totalInterest: input.totalInterest,
       interestRatePercent: input.interestRatePercent,
       fee: input.fee,
       roundInstallments: input.roundInstallments,
     });
-    return { plan, startDate };
+    return { plan, startDate, firstDueDate };
   }
 
   /** พรีวิวแผนผ่อนก่อนเปิดยอดจริง — คำนวณด้วยโค้ดเดียวกับตอนสร้าง ไม่บันทึกอะไร */
@@ -858,7 +854,7 @@ export class LoansService {
     startDate?: string;
     note?: string;
   }): Promise<Loan> {
-    const { plan, startDate } = this.planFromInput(input);
+    const { plan, startDate, firstDueDate } = this.planFromInput(input);
     const loan = this.loans.create({
       debtorId: input.debtorId,
       contractNumber: await this.nextContractNumber(startDate),
@@ -874,7 +870,7 @@ export class LoansService {
       arrears: 0,
       startDate,
       accruedThrough: startDate,
-      firstDueDate: input.firstDueDate ?? null,
+      firstDueDate,
       installmentCount: plan.installmentCount,
       installmentTotal: plan.installmentTotal,
       installmentAmount: plan.installmentAmount,

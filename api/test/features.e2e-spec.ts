@@ -75,11 +75,7 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
     expect(g?.dueInterest).toBe(100); // ดอกวันปล่อยถึงกำหนดแล้ว
   });
 
-  it('ยอดรายสัปดาห์เปิดใหม่ — งวดแรกครบกำหนด วันปล่อย + 7 (ไม่เก็บดอกวันเปิด)', async () => {
-    const addDays = (s: string, n: number) => {
-      const [y, m, d] = s.split('-').map(Number);
-      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-    };
+  it('ยอดรายสัปดาห์เปิดใหม่ — วันรับเงิน = วันที่ 1 เก็บดอกแรกวันเปิดเลย', async () => {
     const debtorId = await newDebtor('รายสัปดาห์');
     const loan = await http()
       .post('/loans')
@@ -87,21 +83,49 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
       .send({
         debtorId,
         principalOriginal: 1_000,
-        interestRatePercent: 20, // 20%/สัปดาห์
+        interestRatePercent: 20, // 20%/สัปดาห์ = 200
         cycle: 'WEEKLY',
       })
       .expect(201);
     const body = loan.body as { firstDueDate: string; startDate: string };
     expect(body.startDate).toBe(today);
-    expect(body.firstDueDate).toBe(addDays(today, 7)); // ครบรอบจริงก่อน ไม่ใช่วันเปิด
+    expect(body.firstDueDate).toBe(today); // วันรับเงิน = วันที่ 1
 
-    // วันเปิดยอดยังไม่ถึงกำหนดเก็บดอก
+    // วันเปิดยอดถึงกำหนดเก็บดอกรอบแรกแล้ว
     const dash = await http().get('/dashboard/today').set(auth()).expect(200);
     const data = dash.body as {
       debtors: { debtorId: string; dueInterest: number }[];
     };
     const g = data.debtors.find((d) => d.debtorId === debtorId);
-    expect(g?.dueInterest ?? 0).toBe(0);
+    expect(g?.dueInterest).toBe(200);
+  });
+
+  it('จบต้นดอก (ผ่อนงวด) เปิดใหม่ — งวดแรกครบกำหนดวันปล่อย (วันรับเงิน = วันที่ 1)', async () => {
+    const debtorId = await newDebtor('จบต้นดอก');
+    const loan = await http()
+      .post('/loans')
+      .set(auth())
+      .send({
+        debtorId,
+        type: 'INSTALLMENT',
+        principalOriginal: 1_000,
+        installmentCount: 13,
+        installmentTotal: 1_300, // ส่ง 100/13 วัน
+        cycle: 'DAILY',
+        // ไม่ส่ง firstDueDate = ให้ระบบนับวันรับเงินเป็นวันที่ 1
+      })
+      .expect(201);
+    const body = loan.body as { firstDueDate: string; startDate: string };
+    expect(body.startDate).toBe(today);
+    expect(body.firstDueDate).toBe(today); // งวดแรกวันปล่อยเลย ไม่ใช่พรุ่งนี้
+
+    const sched = await http()
+      .get(`/loans/${(loan.body as { id: string }).id}/schedule`)
+      .set(auth())
+      .expect(200);
+    const s = sched.body as { rows: { dueDate: string; status: string }[] };
+    expect(s.rows[0].dueDate).toBe(today);
+    expect(s.rows[0].status).toBe('DUE'); // งวดแรกถึงกำหนดวันนี้แล้ว
   });
 
   it('ข้อ 3: ชำระเฉพาะยอดค้าง — ไม่แตะดอก/เงินต้น', async () => {
