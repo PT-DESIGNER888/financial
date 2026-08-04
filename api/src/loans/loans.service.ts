@@ -82,9 +82,13 @@ export class LoansService {
     if (rows.length > 0) {
       anchor = rows[rows.length - 1].dueDate;
     } else {
-      // seed จากสูตรเดิม: วันครบกำหนดล่าสุดที่ ≤ accruedThrough
-      const past = Math.max(0, diffDays(loan.startDate, loan.accruedThrough));
-      anchor = addDays(loan.startDate, Math.floor(past / step) * step);
+      // seed จาก "วันครบกำหนดรอบแรก" — ยอดเปิดใหม่นับวันปล่อยกู้เป็นวันที่ 1 (firstDueDate = วันปล่อย)
+      // ยอดเก่า (firstDueDate = null) ใช้สูตรเดิม (วันเปิดยอด + 1 รอบ) จึงไม่ขยับ
+      const firstDue =
+        loan.firstDueDate ?? defaultFirstDue(loan.startDate, loan.cycle);
+      const gridStart = addDays(firstDue, -step);
+      const past = Math.max(0, diffDays(gridStart, loan.accruedThrough));
+      anchor = addDays(gridStart, Math.floor(past / step) * step);
     }
 
     // เติมแถวจนวันครบกำหนดล่าสุดเลยวันนี้ไป 1 รอบ
@@ -147,9 +151,12 @@ export class LoansService {
       const ahead = diffDays(last, d);
       return ahead > 0 && ahead % cycleStep[loan.cycle] === 0;
     }
-    // fallback (ยังไม่โหลดแถวรอบดอก): สูตรเดิมตามรอบเก็บ
-    const diff = diffDays(loan.startDate, d);
-    if (diff <= 0) return false;
+    // fallback (ยังไม่โหลดแถวรอบดอก): นับจากวันครบกำหนดรอบแรก
+    // ยอดเปิดใหม่ firstDueDate = วันปล่อยกู้ (วันที่ 1), ยอดเก่า = วันเปิดยอด + 1 รอบ
+    const firstDue =
+      loan.firstDueDate ?? defaultFirstDue(loan.startDate, loan.cycle);
+    const diff = diffDays(firstDue, d);
+    if (diff < 0) return false;
     return diff % cycleStep[loan.cycle] === 0;
   }
 
@@ -689,15 +696,21 @@ export class LoansService {
     if (!input.interestRatePercent || input.interestRatePercent <= 0)
       throw new BadRequestException('อัตราดอกต้องมากกว่า 0');
     // ยอดเก่าที่เดินอยู่แล้ว: เริ่มเก็บต่อ "วันนี้" เลย (startDate = เมื่อวาน)
-    // ยอดใหม่: กู้วันนี้ เริ่มส่งพรุ่งนี้ (startDate = วันนี้)
+    // ยอดใหม่: กู้วันนี้ นับวันปล่อยกู้เป็น "วันที่ 1" — งวดแรกเก็บวันปล่อยเลย (startDate = วันนี้)
     const isLegacy =
       input.outstandingPrincipal !== undefined || input.arrears !== undefined;
     const startDate =
       input.startDate ?? (isLegacy ? addDays(todayStr(), -1) : todayStr());
-    // ไม่ accrue ย้อนหลังก่อนวันขึ้นระบบ — ยอดค้างเก่ากรอกมาเองแล้ว
     const yesterday = addDays(todayStr(), -1);
-    const accruedThrough =
-      diffDays(startDate, yesterday) > 0 ? yesterday : startDate;
+    // ยอดเปิดใหม่: firstDueDate = วันปล่อยกู้ (วันที่ 1) → งวดแรกครบกำหนดวันปล่อย
+    //   accruedThrough = วันก่อนปล่อย เพื่อให้งวดแรก (วันปล่อย) ยังค้างอยู่ให้เก็บ
+    // ยอดเก่า (legacy): firstDueDate = null (สูตรเดิม), ไม่ accrue ย้อนก่อนวันขึ้นระบบ
+    const firstDueDate = isLegacy ? null : startDate;
+    const accruedThrough = isLegacy
+      ? diffDays(startDate, yesterday) > 0
+        ? yesterday
+        : startDate
+      : addDays(startDate, -1);
     const loan = this.loans.create({
       debtorId: input.debtorId,
       contractNumber: await this.nextContractNumber(startDate),
@@ -709,6 +722,7 @@ export class LoansService {
       cycle: input.cycle,
       interestMode: input.interestMode ?? InterestMode.FLOATING,
       startDate,
+      firstDueDate,
       accruedThrough,
       status: LoanStatus.ACTIVE,
       note: input.note ?? null,
@@ -902,6 +916,99 @@ export class LoansService {
       },
     });
     return loan;
+  }
+
+  /**
+   * รียอด: ปิดสัญญาเก่า เปิดสัญญาใหม่ที่ "ยกยอดเหลือเดิมมารวมกับต้นใหม่"
+   *
+   * เงินสดที่ลูกหนี้ได้รับจริง = ต้นใหม่ − ยอดเหลือเดิม (เช่น ต้นใหม่ 1,000 เหลือเก่า 400 → รับจริง 600)
+   * เก็บไว้ที่ capitalDisbursed เพื่อให้เงินสดในมือหักแค่ส่วนที่ปล่อยจริง —
+   * ยอดเหลือเดิมยกมาเป็นต้น ไม่ได้ปล่อยเงินสดซ้ำ
+   * ปิดสัญญาเก่าเฉยๆ ไม่บันทึกยอดปิดเต็มสัญญา (ไม่งั้นเงินในระบบไม่ตรงกับเงินจริง)
+   */
+  async refinance(
+    oldLoanId: string,
+    input: Parameters<LoansService['create']>[0],
+  ): Promise<Loan> {
+    const old = await this.findOne(oldLoanId);
+    if (
+      old.status === LoanStatus.CLOSED ||
+      old.status === LoanStatus.BAD_DEBT
+    )
+      throw new BadRequestException('รียอดได้เฉพาะยอดที่ยังเปิดอยู่');
+    // ยอดเหลือเดิม = ยอดคงเหลือที่ยังเก็บไม่ได้ (ยอดตาย/ผ่อนงวด = deadBalance, ยอดปกติ = ต้น + ค้าง)
+    const remaining = this.lossOf(old);
+    if (remaining <= 0)
+      throw new BadRequestException('ยอดเดิมไม่มียอดเหลือให้รียอด');
+
+    // เปิดสัญญาใหม่ (ลูกหนี้คนเดิมเสมอ) — ต้นใหม่รวมยอดเหลือเดิมที่ยกมาแล้ว
+    const created = await this.create({ ...input, debtorId: old.debtorId });
+    const netCash = round2(created.principalOriginal - remaining);
+    if (netCash < 0) {
+      // ย้อนกลับ: ลบยอดใหม่ที่เพิ่งสร้าง แล้วแจ้งเตือน
+      await this.loans.delete(created.id);
+      throw new BadRequestException(
+        `ต้นใหม่ (฿${created.principalOriginal}) ต้องไม่น้อยกว่ายอดเหลือเดิม (฿${remaining})`,
+      );
+    }
+
+    // เงินสดออกจริง = ส่วนที่ปล่อยเพิ่ม, โยงกลับไปสัญญาเดิม
+    created.capitalDisbursed = netCash;
+    created.refinancedFromId = old.id;
+    created.note = [input.note, `รียอดจาก ${old.contractNumber ?? old.id}`]
+      .filter(Boolean)
+      .join(' · ');
+    await this.loans.update(created.id, {
+      capitalDisbursed: created.capitalDisbursed,
+      refinancedFromId: created.refinancedFromId,
+      note: created.note,
+    });
+
+    // ปิดสัญญาเก่า — ไม่บันทึกยอดปิดเต็มสัญญา
+    old.status = LoanStatus.CLOSED;
+    old.closedAt = todayStr();
+    old.note = [old.note, `รียอดเป็น ${created.contractNumber ?? created.id}`]
+      .filter(Boolean)
+      .join(' · ');
+    await this.loans.update(old.id, {
+      status: old.status,
+      closedAt: old.closedAt,
+      note: old.note,
+    });
+
+    await this.activity.log({
+      type: ActivityType.REFINANCE,
+      loanId: created.id,
+      debtorId: old.debtorId,
+      debtorName: old.debtor?.name ?? null,
+      message: `รียอด ${old.contractNumber ?? ''} → ${
+        created.contractNumber ?? ''
+      } · ต้นใหม่ ฿${created.principalOriginal} ยกยอดเหลือ ฿${remaining} จ่ายเพิ่ม ฿${netCash}`,
+      amount: netCash,
+      meta: {
+        oldLoanId: old.id,
+        newLoanId: created.id,
+        remaining,
+        newPrincipal: created.principalOriginal,
+        netCash,
+      },
+    });
+    return this.findOne(created.id);
+  }
+
+  /**
+   * พรีวิวรียอด: คำนวณยอดเหลือเดิม + เงินสดที่ต้องจ่ายเพิ่ม โดยไม่บันทึกอะไร
+   */
+  async refinanceQuote(oldLoanId: string, newPrincipal: number) {
+    const old = await this.findOne(oldLoanId);
+    const remaining = this.lossOf(old);
+    return {
+      oldLoanId: old.id,
+      oldContractNumber: old.contractNumber,
+      remaining,
+      newPrincipal: round2(newPrincipal),
+      netCash: round2(newPrincipal - remaining),
+    };
   }
 
   /** อัปเดตยอดเงินหลังรับชำระ/ลบรายการ แล้วปิด-เปิดยอดตามสถานะจริง */

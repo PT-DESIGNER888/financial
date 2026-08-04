@@ -200,6 +200,44 @@ export function useLoanAction(action: 'close' | 'write-off' | 'reopen') {
   });
 }
 
+/** พรีวิวรียอด: ยอดเหลือเดิม + เงินสดที่ต้องจ่ายเพิ่มเมื่อต้นใหม่ = newPrincipal */
+export interface RefinanceQuote {
+  oldLoanId: string;
+  oldContractNumber: string | null;
+  remaining: number;
+  newPrincipal: number;
+  netCash: number;
+}
+
+export function useRefinanceQuote(
+  loanId: string,
+  newPrincipal: number,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['loan', loanId, 'refinance-quote', newPrincipal],
+    queryFn: () =>
+      api<RefinanceQuote>(
+        `/loans/${loanId}/refinance-quote?newPrincipal=${newPrincipal}`,
+      ),
+    enabled: enabled && !!loanId,
+    staleTime: 0,
+  });
+}
+
+/** รียอด: ปิดสัญญาเดิม เปิดสัญญาใหม่ยกยอดเหลือมา (debtorId ยึดจากสัญญาเดิม) */
+export function useRefinance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: CreateLoanInput }) =>
+      api<Loan>(`/loans/${id}/refinance`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => invalidateMoney(qc),
+  });
+}
+
 export function useDeleteLoan() {
   const qc = useQueryClient();
   return useMutation({

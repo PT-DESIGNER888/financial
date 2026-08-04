@@ -48,6 +48,7 @@ const paymentTypeLabel: Record<PaymentType, string> = {
   INTEREST: 'ชำระดอก',
   PRINCIPAL: 'ลดต้น',
   BOTH: 'ค้าง/ดอก/ต้น',
+  ARREARS: 'เฉพาะค้าง',
 };
 
 type LoanReportRow = Awaited<ReturnType<LoansService['findAll']>>[number];

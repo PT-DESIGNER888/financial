@@ -139,6 +139,29 @@ describe('LoansService.isDueOn', () => {
     expect(service.isDueOn(loan, '2026-07-20')).toBe(false);
   });
 
+  it('ยอดเปิดใหม่: วันปล่อยกู้ = วันที่ 1 → งวดแรกครบกำหนดวันปล่อยเลย (รายวัน)', () => {
+    // firstDueDate = วันปล่อยกู้, ยังไม่มีแถวรอบดอก (ใช้ fallback)
+    const loan = activeLoan({
+      cycle: LoanCycle.DAILY,
+      startDate: '2026-07-06',
+      firstDueDate: '2026-07-06',
+      cycles: [],
+    });
+    expect(service.isDueOn(loan, '2026-07-06')).toBe(true); // วันปล่อยเลย
+    expect(service.isDueOn(loan, '2026-07-07')).toBe(true); // วันถัดไปก็ครบ
+  });
+
+  it('ยอดเก่า (firstDueDate = null): งวดแรกยังเป็นวันเปิดยอด + 1 รอบ (ไม่ขยับ)', () => {
+    const loan = activeLoan({
+      cycle: LoanCycle.DAILY,
+      startDate: '2026-07-06',
+      firstDueDate: null,
+      cycles: [],
+    });
+    expect(service.isDueOn(loan, '2026-07-06')).toBe(false); // วันปล่อยยังไม่เก็บ
+    expect(service.isDueOn(loan, '2026-07-07')).toBe(true); // วันถัดไป
+  });
+
   it('ยอดตายที่ไม่ได้ตกลงงวดตายตัว ไม่ถือว่าถึงกำหนดวันไหนเลย', () => {
     const loan = activeLoan({
       status: LoanStatus.DEAD,

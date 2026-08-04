@@ -74,6 +74,7 @@ export function LoanCard({
   loan,
   onPay,
   onConvert,
+  onRefinance,
   onEdit,
   onAdjust,
   onClose,
@@ -82,6 +83,7 @@ export function LoanCard({
   loan: Loan;
   onPay?: () => void;
   onConvert?: () => void;
+  onRefinance?: () => void;
   onEdit?: () => void;
   onAdjust?: () => void;
   onClose?: () => void;
@@ -331,6 +333,14 @@ export function LoanCard({
               icon={<IconAdjust className="size-3.5" />}
             >
               ปรับยอด
+            </ManageBtn>
+          )}
+          {isOpen && onRefinance && (
+            <ManageBtn
+              onClick={onRefinance}
+              icon={<IconReopen className="size-3.5" />}
+            >
+              รียอด
             </ManageBtn>
           )}
           {isOpen && onClose && (

@@ -16,6 +16,7 @@ import {
   IconReceive,
   IconUsers,
 } from '@/components/icons';
+import { CombinedReceiveModal } from '@/components/combined-receive-modal';
 import { PaymentModal } from '@/components/payment-modal';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht, cycleLabel, thaiDateLong, todayISO } from '@/lib/format';
@@ -40,6 +41,7 @@ function TodayView() {
   const [date, setDate] = useState(todayISO());
   const { data, error, isFetching } = useToday(date);
   const [paying, setPaying] = useState<PayTarget | null>(null);
+  const [combining, setCombining] = useState<TodayDebtor | null>(null);
   const [q, setQ] = useState('');
 
   if (error)
@@ -146,6 +148,7 @@ function TodayView() {
               groups={unpaid}
               date={date}
               onPay={setPaying}
+              onCombined={setCombining}
             />
           )}
 
@@ -156,6 +159,7 @@ function TodayView() {
               groups={paid}
               date={date}
               onPay={setPaying}
+              onCombined={setCombining}
               done
             />
           )}
@@ -175,6 +179,15 @@ function TodayView() {
           ]}
           onClose={() => setPaying(null)}
           onSaved={() => setPaying(null)}
+        />
+      )}
+
+      {combining && (
+        <CombinedReceiveModal
+          group={combining}
+          paidDate={date}
+          onClose={() => setCombining(null)}
+          onSaved={() => setCombining(null)}
         />
       )}
     </div>
@@ -255,6 +268,7 @@ function DebtorSection({
   groups,
   date,
   onPay,
+  onCombined,
   done,
 }: {
   title: string;
@@ -262,6 +276,7 @@ function DebtorSection({
   groups: TodayDebtor[];
   date: string;
   onPay: (t: PayTarget) => void;
+  onCombined: (g: TodayDebtor) => void;
   done?: boolean;
 }) {
   return (
@@ -281,6 +296,7 @@ function DebtorSection({
             group={g}
             date={date}
             onPay={onPay}
+            onCombined={onCombined}
             done={done}
           />
         ))}
@@ -294,14 +310,19 @@ function DebtorCard({
   group,
   date,
   onPay,
+  onCombined,
   done,
 }: {
   group: TodayDebtor;
   date: string;
   onPay: (t: PayTarget) => void;
+  onCombined: (g: TodayDebtor) => void;
   done?: boolean;
 }) {
   const single = group.items.length === 1;
+  // มีหลายยอดกู้และยังเก็บไม่ครบ — เปิดรับรวมทีเดียวได้
+  const canCombine =
+    !single && group.items.filter((it) => it.remainingToday > 0).length > 1;
   // ถึงกำหนดวันนี้แต่จ่ายมาก่อนหน้าแล้ว — ต้องบอกให้ชัด ไม่งั้นเห็นเป็น ฿0 แล้วงง
   const prepaid = !!done && group.paidToday === 0 && group.dueTotal > 0;
 
@@ -420,6 +441,16 @@ function DebtorCard({
           >
             <IconReceive className="size-[1.125rem] stroke-[1.5]" />
             {done ? 'รับเพิ่ม' : 'รับเงิน'}
+          </Button>
+        )}
+        {canCombine && (
+          <Button
+            onClick={() => onCombined(group)}
+            variant="primary"
+            className="flex-1"
+          >
+            <IconReceive className="size-[1.125rem] stroke-[1.5]" />
+            รับรวม
           </Button>
         )}
         <Link

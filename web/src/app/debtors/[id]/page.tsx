@@ -26,6 +26,7 @@ import { EditLoanModal } from './_components/edit-loan-modal';
 import { facebookDisplayName, resolveContacts } from './_components/helpers';
 import { LoanCard } from './_components/loan-card';
 import { ReasonModal } from './_components/reason-modal';
+import { RefinanceModal } from './_components/refinance-modal';
 import { DebtorSummaryStrip } from './_components/summary-strip';
 
 export default function DebtorPage({
@@ -49,6 +50,7 @@ function DebtorView({ id }: { id: string }) {
   const [converting, setConverting] = useState<Loan | null>(null);
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
   const [adjusting, setAdjusting] = useState<Loan | null>(null);
+  const [refinancing, setRefinancing] = useState<Loan | null>(null);
   const [reasonAction, setReasonAction] = useState<{
     loan: Loan;
     kind: 'close' | 'write-off';
@@ -242,6 +244,7 @@ function DebtorView({ id }: { id: string }) {
           loan={loan}
           onPay={() => setPaying(loan)}
           onConvert={() => setConverting(loan)}
+          onRefinance={() => setRefinancing(loan)}
           onEdit={() => setEditingLoan(loan)}
           onAdjust={() => setAdjusting(loan)}
           onClose={() => setReasonAction({ loan, kind: 'close' })}
@@ -347,6 +350,13 @@ function DebtorView({ id }: { id: string }) {
           loan={adjusting}
           onClose={() => setAdjusting(null)}
           onSaved={() => setAdjusting(null)}
+        />
+      )}
+      {refinancing && (
+        <RefinanceModal
+          loan={refinancing}
+          onClose={() => setRefinancing(null)}
+          onSaved={() => setRefinancing(null)}
         />
       )}
       {reasonAction && (
