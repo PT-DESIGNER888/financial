@@ -75,6 +75,35 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
     expect(g?.dueInterest).toBe(100); // ดอกวันปล่อยถึงกำหนดแล้ว
   });
 
+  it('ยอดรายสัปดาห์เปิดใหม่ — งวดแรกครบกำหนด วันปล่อย + 7 (ไม่เก็บดอกวันเปิด)', async () => {
+    const addDays = (s: string, n: number) => {
+      const [y, m, d] = s.split('-').map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    const debtorId = await newDebtor('รายสัปดาห์');
+    const loan = await http()
+      .post('/loans')
+      .set(auth())
+      .send({
+        debtorId,
+        principalOriginal: 1_000,
+        interestRatePercent: 20, // 20%/สัปดาห์
+        cycle: 'WEEKLY',
+      })
+      .expect(201);
+    const body = loan.body as { firstDueDate: string; startDate: string };
+    expect(body.startDate).toBe(today);
+    expect(body.firstDueDate).toBe(addDays(today, 7)); // ครบรอบจริงก่อน ไม่ใช่วันเปิด
+
+    // วันเปิดยอดยังไม่ถึงกำหนดเก็บดอก
+    const dash = await http().get('/dashboard/today').set(auth()).expect(200);
+    const data = dash.body as {
+      debtors: { debtorId: string; dueInterest: number }[];
+    };
+    const g = data.debtors.find((d) => d.debtorId === debtorId);
+    expect(g?.dueInterest ?? 0).toBe(0);
+  });
+
   it('ข้อ 3: ชำระเฉพาะยอดค้าง — ไม่แตะดอก/เงินต้น', async () => {
     const debtorId = await newDebtor('บี');
     // ยอดเก่ามีค้างสะสม 500 (ส่ง outstandingPrincipal/arrears = legacy)

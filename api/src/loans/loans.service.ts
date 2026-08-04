@@ -702,10 +702,17 @@ export class LoansService {
     const startDate =
       input.startDate ?? (isLegacy ? addDays(todayStr(), -1) : todayStr());
     const yesterday = addDays(todayStr(), -1);
-    // ยอดเปิดใหม่: firstDueDate = วันปล่อยกู้ (วันที่ 1) → งวดแรกครบกำหนดวันปล่อย
-    //   accruedThrough = วันก่อนปล่อย เพื่อให้งวดแรก (วันปล่อย) ยังค้างอยู่ให้เก็บ
+    // ยอดเปิดใหม่:
+    //   รายวัน — firstDueDate = วันปล่อยกู้ (นับวันปล่อยเป็นวันที่ 1) เก็บดอกวันปล่อยเลย
+    //   รายสัปดาห์/ราย10วัน — firstDueDate = วันปล่อย + 1 รอบ (ดอกครบเมื่อครบรอบจริง
+    //     ไม่ใช่เก็บดอกเต็มรอบตั้งแต่วันปล่อยทั้งที่รอบยังไม่เดิน)
+    //   accruedThrough = วันก่อนปล่อย เพื่อให้งวดแรกยังค้างอยู่ให้เก็บ
     // ยอดเก่า (legacy): firstDueDate = null (สูตรเดิม), ไม่ accrue ย้อนก่อนวันขึ้นระบบ
-    const firstDueDate = isLegacy ? null : startDate;
+    const firstDueDate = isLegacy
+      ? null
+      : input.cycle === LoanCycle.DAILY
+        ? startDate
+        : defaultFirstDue(startDate, input.cycle);
     const accruedThrough = isLegacy
       ? diffDays(startDate, yesterday) > 0
         ? yesterday
