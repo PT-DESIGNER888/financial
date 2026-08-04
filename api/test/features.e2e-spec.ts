@@ -128,6 +128,65 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
     expect(s.rows[0].status).toBe('DUE'); // งวดแรกถึงกำหนดวันนี้แล้ว
   });
 
+  it('รียอดจบต้นดอก → จบต้นดอก — เหลือ 400 รับจริง 600 ปิดเก่าเปิดใหม่', async () => {
+    const debtorId = await newDebtor('รียอดผ่อน');
+    // จบต้นดอก: ต้น 1,000 ผ่อนรวม 1,300 (100/13 วัน)
+    const loan = await http()
+      .post('/loans')
+      .set(auth())
+      .send({
+        debtorId,
+        type: 'INSTALLMENT',
+        principalOriginal: 1_000,
+        installmentCount: 13,
+        installmentTotal: 1_300,
+        cycle: 'DAILY',
+      })
+      .expect(201);
+    const oldId = (loan.body as { id: string }).id;
+
+    // ผ่อนมาแล้ว 9 งวด = 900 → เหลือ 400
+    await http()
+      .post('/payments')
+      .set(auth())
+      .send({ loanId: oldId, amount: 900, paymentType: 'PRINCIPAL' })
+      .expect(201);
+
+    const quote = await http()
+      .get(`/loans/${oldId}/refinance-quote?newPrincipal=1000`)
+      .set(auth())
+      .expect(200);
+    const q = quote.body as { remaining: number; netCash: number };
+    expect(q.remaining).toBe(400); // ยอดผ่อนคงเหลือ
+    expect(q.netCash).toBe(600); // รับจริง = ต้นใหม่ 1000 − เหลือ 400
+
+    // รียอดเป็นจบต้นดอกใบใหม่ (ต้น 1,000 ผ่อน 1,300)
+    const refi = await http()
+      .post(`/loans/${oldId}/refinance`)
+      .set(auth())
+      .send({
+        debtorId,
+        type: 'INSTALLMENT',
+        principalOriginal: 1_000,
+        installmentCount: 13,
+        installmentTotal: 1_300,
+        cycle: 'DAILY',
+      })
+      .expect(201);
+    const newLoan = refi.body as {
+      id: string;
+      status: string;
+      capitalDisbursed: number;
+      installmentCount: number;
+    };
+    expect(newLoan.status).toBe('INSTALLMENT');
+    expect(newLoan.installmentCount).toBe(13);
+    expect(newLoan.capitalDisbursed).toBe(600); // ปล่อยเงินสดจริงแค่ 600
+
+    const oldAfter = await http().get(`/loans/${oldId}`).set(auth());
+    expect((oldAfter.body as { status: string }).status).toBe('CLOSED');
+  });
+
   it('ข้อ 3: ชำระเฉพาะยอดค้าง — ไม่แตะดอก/เงินต้น', async () => {
     const debtorId = await newDebtor('บี');
     // ยอดเก่ามีค้างสะสม 500 (ส่ง outstandingPrincipal/arrears = legacy)

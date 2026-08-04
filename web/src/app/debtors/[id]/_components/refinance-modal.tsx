@@ -6,25 +6,35 @@ import {
   FormInput,
   ModalButtons,
   SelectMenu,
+  Segmented,
 } from '@/components/form';
 import { baht, cycleLabel } from '@/lib/format';
 import { useRefinance } from '@/lib/hooks/useLoans';
+import type { CreateLoanInput } from '@/lib/hooks/useLoans';
 import { toast } from '@/lib/toast-store';
-import { LoanStatus, REVOLVING_CYCLES } from '@/lib/types';
+import { LoanCycle, LoanStatus, REVOLVING_CYCLES } from '@/lib/types';
 import type { Loan, RevolvingCycle } from '@/lib/types';
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-const cycleOptions = REVOLVING_CYCLES.map((c) => ({
+const revolvingCycleOptions = REVOLVING_CYCLES.map((c) => ({
   value: c,
   label: cycleLabel[c],
 }));
 
+const installmentCycleOptions: { value: LoanCycle; label: string }[] = [
+  { value: LoanCycle.DAILY, label: 'รายวัน' },
+  { value: LoanCycle.WEEKLY, label: 'รายสัปดาห์' },
+  { value: LoanCycle.TEN_DAY, label: 'ทุก 10 วัน' },
+  { value: LoanCycle.MONTHLY, label: 'รายเดือน' },
+];
+
 /**
- * รียอด — ปิดสัญญาเดิม เปิดสัญญาใหม่ (ดอกลอย/คงที่) ยกยอดเหลือเดิมมารวมต้นใหม่
+ * รียอด — ปิดสัญญาเดิม เปิดสัญญาใหม่ ยกยอดเหลือเดิมมารวมต้นใหม่
  * เงินที่ลูกหนี้รับจริง = ต้นใหม่ − ยอดเหลือเดิม (ระบบไม่บันทึกยอดปิดเต็มสัญญา)
+ * ยอดใหม่เป็นได้ทั้งดอกลอย/คงที่ และจบต้นดอก (ผ่อนงวด) — เริ่มต้นตามชนิดยอดเดิม
  */
 export function RefinanceModal({
   loan,
@@ -41,6 +51,11 @@ export function RefinanceModal({
       ? round2(loan.outstandingPrincipal + loan.arrears)
       : (loan.deadBalance ?? 0);
 
+  const oldIsInstallment = loan.status === LoanStatus.INSTALLMENT;
+  const [kind, setKind] = useState<'REVOLVING' | 'INSTALLMENT'>(
+    oldIsInstallment ? 'INSTALLMENT' : 'REVOLVING',
+  );
+
   const [principal, setPrincipal] = useState(String(remaining));
   const [rate, setRate] = useState(
     loan.status === LoanStatus.ACTIVE ? String(loan.interestRatePercent) : '',
@@ -50,36 +65,56 @@ export function RefinanceModal({
       ? (loan.cycle as RevolvingCycle)
       : 'DAILY',
   );
+  // จบต้นดอก (ผ่อนงวด, ดอกคงที่)
+  const [count, setCount] = useState(
+    loan.installmentCount ? String(loan.installmentCount) : '',
+  );
+  const [interest, setInterest] = useState('');
+  const [insCycle, setInsCycle] = useState<LoanCycle>(loan.cycle);
   const [error, setError] = useState('');
   const refinance = useRefinance();
 
   const newPrincipal = parseFloat(principal) || 0;
   const rateNum = parseFloat(rate) || 0;
+  const countNum = parseInt(count, 10) || 0;
+  const interestNum = parseFloat(interest) || 0;
   const netCash = round2(newPrincipal - remaining);
+  const installmentTotal = round2(newPrincipal + interestNum);
+  const perInstallment =
+    countNum > 0 ? round2(installmentTotal / countNum) : 0;
+
+  const invalid =
+    newPrincipal < remaining ||
+    (kind === 'REVOLVING' ? rateNum <= 0 : countNum < 1 || interestNum < 0);
 
   const save = async () => {
     setError('');
-    if (newPrincipal < remaining) {
-      setError(
-        `ต้นใหม่ต้องไม่น้อยกว่ายอดเหลือเดิม ฿${baht(remaining)}`,
-      );
-      return;
-    }
-    if (rateNum <= 0) {
-      setError('อัตราดอกต้องมากกว่า 0');
-      return;
+    if (newPrincipal < remaining)
+      return setError(`ต้นใหม่ต้องไม่น้อยกว่ายอดเหลือเดิม ฿${baht(remaining)}`);
+    let input: CreateLoanInput;
+    if (kind === 'REVOLVING') {
+      if (rateNum <= 0) return setError('อัตราดอกต้องมากกว่า 0');
+      input = {
+        debtorId: loan.debtorId,
+        type: 'REVOLVING',
+        principalOriginal: newPrincipal,
+        interestRatePercent: rateNum,
+        cycle,
+      };
+    } else {
+      if (countNum < 1) return setError('จำนวนงวดต้องอย่างน้อย 1 งวด');
+      if (interestNum < 0) return setError('ดอกเบี้ยรวมต้องไม่ติดลบ');
+      input = {
+        debtorId: loan.debtorId,
+        type: 'INSTALLMENT',
+        principalOriginal: newPrincipal,
+        installmentCount: countNum,
+        totalInterest: interestNum,
+        cycle: insCycle,
+      };
     }
     try {
-      await refinance.mutateAsync({
-        id: loan.id,
-        input: {
-          debtorId: loan.debtorId,
-          type: 'REVOLVING',
-          principalOriginal: newPrincipal,
-          interestRatePercent: rateNum,
-          cycle,
-        },
-      });
+      await refinance.mutateAsync({ id: loan.id, input });
       toast(
         `รียอดสำเร็จ — ต้นใหม่ ฿${baht(newPrincipal)} · จ่ายเพิ่ม ฿${baht(netCash)}`,
       );
@@ -115,6 +150,26 @@ export function RefinanceModal({
           </strong>
         </div>
 
+        <Field label="ยอดใหม่เป็นแบบ">
+          <Segmented
+            value={kind}
+            onChange={setKind}
+            accent={kind === 'INSTALLMENT' ? 'sky' : 'primary'}
+            options={[
+              {
+                value: 'INSTALLMENT',
+                label: 'จบต้นดอก',
+                hint: 'ผ่อนเป็นงวด',
+              },
+              {
+                value: 'REVOLVING',
+                label: 'ดอกลอย / คงที่',
+                hint: 'เก็บดอกต่อรอบ',
+              },
+            ]}
+          />
+        </Field>
+
         <FormInput
           label="ต้นใหม่ (บาท) *"
           type="number"
@@ -127,22 +182,68 @@ export function RefinanceModal({
           }}
         />
 
-        <div className="grid grid-cols-2 gap-2">
-          <FormInput
-            label="อัตราดอก (%/รอบ) *"
-            type="number"
-            inputMode="decimal"
-            align="right"
-            value={rate}
-            onChange={(e) => {
-              setRate(e.target.value);
-              setError('');
-            }}
-          />
-          <Field label="รอบเก็บ *">
-            <SelectMenu value={cycle} onChange={setCycle} options={cycleOptions} />
-          </Field>
-        </div>
+        {kind === 'REVOLVING' ? (
+          <div className="grid grid-cols-2 gap-2">
+            <FormInput
+              label="อัตราดอก (%/รอบ) *"
+              type="number"
+              inputMode="decimal"
+              align="right"
+              value={rate}
+              onChange={(e) => {
+                setRate(e.target.value);
+                setError('');
+              }}
+            />
+            <Field label="รอบเก็บ *">
+              <SelectMenu
+                value={cycle}
+                onChange={setCycle}
+                options={revolvingCycleOptions}
+              />
+            </Field>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <FormInput
+                label="จำนวนงวด *"
+                type="number"
+                inputMode="numeric"
+                align="right"
+                value={count}
+                onChange={(e) => {
+                  setCount(e.target.value);
+                  setError('');
+                }}
+              />
+              <Field label="รอบผ่อน *">
+                <SelectMenu
+                  value={insCycle}
+                  onChange={setInsCycle}
+                  options={installmentCycleOptions}
+                />
+              </Field>
+            </div>
+            <FormInput
+              label="ดอกเบี้ยรวมทั้งสัญญา (บาท) *"
+              type="number"
+              inputMode="decimal"
+              align="right"
+              value={interest}
+              onChange={(e) => {
+                setInterest(e.target.value);
+                setError('');
+              }}
+            />
+            {countNum > 0 && (
+              <p className="text-xs text-slate-500 dark:text-gray-400">
+                ผ่อนรวม ฿{baht(installmentTotal)} · งวดละ ฿{baht(perInstallment)}{' '}
+                × {countNum} งวด
+              </p>
+            )}
+          </>
+        )}
 
         <div className="flex items-center justify-between rounded-xl bg-primary/10 px-4 py-3.5">
           <span className="text-sm font-medium text-slate-700 dark:text-gray-200">
@@ -171,7 +272,7 @@ export function RefinanceModal({
           onSave={() => void save()}
           saving={refinance.isPending}
           saveLabel="ยืนยันรียอด"
-          disabled={newPrincipal < remaining || rateNum <= 0}
+          disabled={invalid}
         />
       </div>
     </div>

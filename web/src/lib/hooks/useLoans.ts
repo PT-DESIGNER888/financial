@@ -31,6 +31,8 @@ export interface CreateLoanInput {
   /** ยอดตายคีย์มือ: งวดที่ตกลงผ่อน (ไม่ส่ง = ไม่มีกำหนดตายตัว) */
   installmentAmount?: number;
   totalInterest?: number;
+  /** ยอดผ่อนรวม (ต้น+ดอก) — ทางเลือกแทน totalInterest */
+  installmentTotal?: number;
   amortized?: boolean;
   fee?: number;
   firstDueDate?: string;
