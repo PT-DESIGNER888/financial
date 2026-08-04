@@ -233,6 +233,7 @@ function DebtorView({ id }: { id: string }) {
         </section>
       </div>
 
+      {/* <DebtorSummaryStrip debtorId={id} /> */}
       <DebtorSummaryStrip debtorId={id} />
 
       {open.map((loan) => (
