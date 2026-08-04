@@ -42,11 +42,13 @@ export const InterestMode = {
 } as const;
 export type InterestMode = (typeof InterestMode)[keyof typeof InterestMode];
 
-/** ประเภทการรับชำระ: ชำระดอก (ต้นคงเดิม) / ลดเงินต้น / ดอก+ลดต้น */
+/** ประเภทการรับชำระ: ชำระดอก (ต้นคงเดิม) / ลดเงินต้น / ดอก+ลดต้น / เฉพาะค้าง */
 export const PaymentType = {
   INTEREST: 'INTEREST',
   PRINCIPAL: 'PRINCIPAL',
   BOTH: 'BOTH',
+  /** ชำระเฉพาะยอดค้างเก่า — ไม่แตะดอกรอบนี้/เงินต้น */
+  ARREARS: 'ARREARS',
 } as const;
 export type PaymentType = (typeof PaymentType)[keyof typeof PaymentType];
 
@@ -59,6 +61,7 @@ export const ActivityType = {
   EDIT_CYCLE: 'EDIT_CYCLE',
   DELETE_LOAN: 'DELETE_LOAN',
   CONVERT_DEAD: 'CONVERT_DEAD',
+  REFINANCE: 'REFINANCE',
   EDIT_DEBTOR: 'EDIT_DEBTOR',
   DELETE_DEBTOR: 'DELETE_DEBTOR',
 } as const;

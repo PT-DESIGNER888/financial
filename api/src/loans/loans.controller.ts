@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import {
@@ -284,6 +285,21 @@ export class LoansController {
   @Post(':id/dead')
   convertToDead(@Param('id') id: string, @Body() dto: ConvertDeadDto) {
     return this.loans.convertToDead(id, dto.installmentAmount);
+  }
+
+  /** พรีวิวรียอด: ยอดเหลือเดิม + เงินสดที่ต้องจ่ายเพิ่มเมื่อต้นใหม่ = newPrincipal */
+  @Get(':id/refinance-quote')
+  refinanceQuote(
+    @Param('id') id: string,
+    @Query('newPrincipal') newPrincipal?: string,
+  ) {
+    return this.loans.refinanceQuote(id, parseFloat(newPrincipal ?? '0') || 0);
+  }
+
+  /** รียอด: ปิดสัญญาเดิม เปิดสัญญาใหม่ (debtorId ยึดจากสัญญาเดิม) */
+  @Post(':id/refinance')
+  refinance(@Param('id') id: string, @Body() dto: CreateLoanDto) {
+    return this.loans.refinance(id, dto);
   }
 
   @Patch(':id')

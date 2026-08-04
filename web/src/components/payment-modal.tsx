@@ -5,6 +5,8 @@ import { ModalButtons, Segmented, TextInput } from '@/components/form';
 import { baht, thaiDate } from '@/lib/format';
 import { confirmDialog } from '@/lib/confirm-store';
 import {
+  usePrepayCycles,
+  usePrepayQuote,
   useRecordPayment,
   useSuggestAllocation,
 } from '@/lib/hooks/usePayments';
@@ -45,6 +47,8 @@ export function PaymentModal({
   onSaved,
 }: Props) {
   const [amount, setAmount] = useState('');
+  const [mode, setMode] = useState<'normal' | 'prepay'>('normal');
+  const [prepayCount, setPrepayCount] = useState(2);
   const [paymentType, setPaymentType] = useState<PaymentType>(PaymentType.INTEREST);
   const [interestDueStr, setInterestDueStr] = useState(''); // '' = ใช้ที่ระบบคำนวณ
   const [arrearsPaid, setArrearsPaid] = useState(0);
@@ -83,6 +87,31 @@ export function PaymentModal({
   const maxReceivable = ceiling?.maxReceivable ?? 0;
   const principalBalance = ceiling?.principalBalance ?? 0;
   const cycle = ceiling?.cycle ?? null;
+  const arrearsDue = ceiling?.arrearsDue ?? 0;
+  // ยอดดอกลอย/คงที่ที่ยังเดินอยู่ — รองรับชำระดอกล่วงหน้าหลายรอบ
+  const revolving = !frozen && !!cycle;
+
+  const { data: prepayQuote, isFetching: prepayLoading } = usePrepayQuote(
+    loanId,
+    prepayCount,
+    mode === 'prepay' && revolving,
+  );
+  const prepay = usePrepayCycles();
+
+  const doPrepay = async () => {
+    setError('');
+    try {
+      const rows = await prepay.mutateAsync({ loanId, count: prepayCount });
+      toast(
+        `ชำระดอกล่วงหน้า ${rows.length} รอบ ฿${baht(
+          prepayQuote?.total ?? 0,
+        )} — ${debtorName}`,
+      );
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ');
+    }
+  };
 
   const { data: suggestion, isFetching: suggesting } = useSuggestAllocation(
     loanId,
@@ -261,6 +290,35 @@ export function PaymentModal({
           </p>
         </header>
 
+        {revolving && (
+          <Segmented
+            value={mode}
+            onChange={(m) => {
+              setMode(m);
+              setError('');
+            }}
+            options={[
+              { value: 'normal', label: 'รับปกติ' },
+              {
+                value: 'prepay',
+                label: 'จ่ายล่วงหน้า',
+                hint: 'ส่งดอกหลายรอบ',
+              },
+            ]}
+          />
+        )}
+
+        {mode === 'prepay' ? (
+          <PrepayPanel
+            count={prepayCount}
+            setCount={setPrepayCount}
+            total={prepayQuote?.total ?? 0}
+            perCycle={prepayQuote?.perCycle ?? 0}
+            rows={prepayQuote?.cycles ?? []}
+            loading={prepayLoading}
+          />
+        ) : (
+          <>
         {!frozen && (
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-gray-300">
@@ -277,12 +335,24 @@ export function PaymentModal({
                 },
                 { value: PaymentType.PRINCIPAL, label: 'ลดเงินต้น', hint: 'ตัดต้นอย่างเดียว' },
                 { value: PaymentType.BOTH, label: 'ดอก + ลดต้น', hint: 'ดอก→ค้าง→ต้น' },
+                ...(arrearsDue > 0
+                  ? [
+                      {
+                        value: PaymentType.ARREARS,
+                        label: 'เฉพาะค้าง',
+                        hint: 'เก็บค้างเก่าล้วน',
+                      },
+                    ]
+                  : []),
               ]}
             />
           </div>
         )}
 
-        {!frozen && cycle && paymentType !== PaymentType.PRINCIPAL && (
+        {!frozen &&
+          cycle &&
+          paymentType !== PaymentType.PRINCIPAL &&
+          paymentType !== PaymentType.ARREARS && (
           <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3.5 dark:border-gray-700 dark:bg-gray-950/60">
             <p className="text-sm text-slate-600 dark:text-gray-300">
               รอบนี้ครบกำหนด{' '}
@@ -404,6 +474,8 @@ export function PaymentModal({
 
           {frozen ? (
             numField(`หัก${frozenLabel}`, principalPaid, setPrincipalPaid)
+          ) : paymentType === PaymentType.ARREARS ? (
+            numField('ค้างเก่า', arrearsPaid, setArrearsPaid)
           ) : paymentType === PaymentType.INTEREST ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
               {numField('ดอกรอบนี้', interestPaid, setInterestPaid)}
@@ -448,28 +520,124 @@ export function PaymentModal({
             className="h-12 text-base"
           />
         </div>
+          </>
+        )}
 
         {error && (
           <p className="text-sm font-medium text-red-600 dark:text-red-400">
             {error}
           </p>
         )}
-        {amountEmpty && !error && (
+        {mode === 'normal' && amountEmpty && !error && (
           <p className="text-sm text-red-600 dark:text-red-400">
             กรุณากรอกจำนวนเงินที่รับ
           </p>
         )}
 
-        <ModalButtons
-          onClose={onClose}
-          onSave={() => void save()}
-          saving={record.isPending}
-          saveLabel="บันทึกการรับเงิน"
-          disabled={
-            amountEmpty || overAllocated || (!manual && suggestionPending)
-          }
-        />
+        {mode === 'prepay' ? (
+          <ModalButtons
+            onClose={onClose}
+            onSave={() => void doPrepay()}
+            saving={prepay.isPending}
+            saveLabel={`ชำระดอกล่วงหน้า ${prepayQuote?.count ?? 0} รอบ`}
+            disabled={prepayLoading || (prepayQuote?.count ?? 0) === 0}
+          />
+        ) : (
+          <ModalButtons
+            onClose={onClose}
+            onSave={() => void save()}
+            saving={record.isPending}
+            saveLabel="บันทึกการรับเงิน"
+            disabled={
+              amountEmpty || overAllocated || (!manual && suggestionPending)
+            }
+          />
+        )}
       </div>
+    </div>
+  );
+}
+
+/** แผงชำระดอกล่วงหน้าหลายรอบ (รายวัน/ราย 7/10 วัน) */
+function PrepayPanel({
+  count,
+  setCount,
+  total,
+  perCycle,
+  rows,
+  loading,
+}: {
+  count: number;
+  setCount: (n: number) => void;
+  total: number;
+  perCycle: number;
+  rows: { dueDate: string; interest: number }[];
+  loading: boolean;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm text-slate-600 dark:border-gray-700 dark:bg-gray-950/60 dark:text-gray-300">
+        ส่งดอกล่วงหน้าหลายรอบในครั้งเดียว — ระบบตัดยอดให้ตรงตามวันของแต่ละรอบ
+        {perCycle > 0 && <> · รอบละ ฿{baht(perCycle)}</>}
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <label className="text-sm font-medium text-slate-600 dark:text-gray-300">
+          จำนวนรอบล่วงหน้า
+        </label>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="ลดจำนวนรอบ"
+            onClick={() => setCount(Math.max(1, count - 1))}
+            className="flex size-11 items-center justify-center rounded-xl border border-slate-200 text-xl font-bold text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            −
+          </button>
+          <span
+            data-money
+            className="w-12 text-center text-xl font-bold tabular-nums text-slate-900 dark:text-white"
+          >
+            {count}
+          </span>
+          <button
+            type="button"
+            aria-label="เพิ่มจำนวนรอบ"
+            onClick={() => setCount(Math.min(60, count + 1))}
+            className="flex size-11 items-center justify-center rounded-xl border border-slate-200 text-xl font-bold text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            +
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between rounded-xl bg-primary/10 px-4 py-3.5">
+        <span className="text-sm font-medium text-slate-700 dark:text-gray-200">
+          รวมดอกล่วงหน้า{loading && ' …'}
+        </span>
+        <strong
+          data-money
+          className="text-2xl font-bold tabular-nums text-primary"
+        >
+          ฿{baht(total)}
+        </strong>
+      </div>
+
+      {rows.length > 0 && (
+        <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
+          {rows.map((r) => (
+            <li
+              key={r.dueDate}
+              className="flex items-center justify-between rounded-lg px-3 py-1.5 text-slate-600 odd:bg-slate-50 dark:text-gray-300 dark:odd:bg-gray-800/60"
+            >
+              <span>{thaiDate(r.dueDate)}</span>
+              <span data-money className="tabular-nums">
+                ฿{baht(r.interest)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

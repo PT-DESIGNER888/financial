@@ -57,6 +57,23 @@ describe('allocatePayment — ดอกรอบนี้ก่อน แล้�
     });
   });
 
+  it('ชำระเฉพาะค้าง: เข้าค้างเก่าอย่างเดียว ไม่แตะดอกรอบนี้/เงินต้น', () => {
+    const r = alloc(500, { paymentType: PaymentType.ARREARS });
+    expect(r).toMatchObject({
+      interestPaid: 0,
+      arrearsPaid: 500,
+      principalPaid: 0,
+    });
+    expect(r.maxReceivable).toBe(500); // เก็บได้สูงสุด = ยอดค้างเก่าเท่านั้น
+  });
+
+  it('ชำระเฉพาะค้าง: จ่ายเกินค้าง ส่วนเกินไม่ไหลไปดอก/ต้น', () => {
+    const r = alloc(9_999, { paymentType: PaymentType.ARREARS });
+    expect(r.arrearsPaid).toBe(500);
+    expect(r.interestPaid).toBe(0);
+    expect(r.principalPaid).toBe(0);
+  });
+
   it('ไม่มีค้างเก่า → เหมือนเดิมทุกอย่าง', () => {
     const r = alloc(100, { arrearsDue: 0 });
     expect(r.interestPaid).toBe(100);

@@ -132,6 +132,16 @@ export class Loan {
   @Column({ default: true })
   fromCapital: boolean;
 
+  /** เงินสดที่ปล่อยจริงตอนเปิดยอด — null = ใช้ principalOriginal (ยอดปกติ)
+   *  ยอดรียอด: ต้นใหม่รวมยอดเหลือเดิมที่ยกมา แต่เงินสดออกจริง = ต้นใหม่ − ยอดเหลือเดิม
+   *  ใช้แทน principalOriginal ตอนคิดเงินสดในมือ ไม่งั้นยอดที่ยกมาถูกนับปล่อยซ้ำ */
+  @Column({ ...money, nullable: true })
+  capitalDisbursed: number | null;
+
+  /** รียอด: id สัญญาเดิมที่ปิดไปตอนเปิดยอดนี้ (โยงประวัติ) */
+  @Column({ type: 'uuid', nullable: true })
+  refinancedFromId: string | null;
+
   @OneToMany(() => Payment, (p) => p.loan)
   payments: Payment[];
 

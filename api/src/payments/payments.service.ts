@@ -5,10 +5,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { todayStr } from '../common/date.util';
-import { LoanStatus, PaymentType } from '../common/enums';
+import { addDays, todayStr } from '../common/date.util';
+import { LoanCycle, LoanStatus, PaymentType } from '../common/enums';
 import { Loan } from '../entities/loan.entity';
 import { Payment } from '../entities/payment.entity';
+import { cycleStep } from '../loans/installment-plan';
 import { LoansService } from '../loans/loans.service';
 
 export interface RecordPaymentInput {
@@ -45,9 +46,14 @@ export function allocatePayment(input: {
   principalBalance: number;
 }) {
   const { amount, paymentType } = input;
-  const canInterest = paymentType !== PaymentType.PRINCIPAL;
+  // ARREARS = เก็บเฉพาะยอดค้างเก่า (ไม่แตะดอกรอบนี้/เงินต้น)
+  const canInterest =
+    paymentType !== PaymentType.PRINCIPAL &&
+    paymentType !== PaymentType.ARREARS;
   const canArrears = paymentType !== PaymentType.PRINCIPAL;
-  const canPrincipal = paymentType !== PaymentType.INTEREST;
+  const canPrincipal =
+    paymentType !== PaymentType.INTEREST &&
+    paymentType !== PaymentType.ARREARS;
 
   let rest = amount;
   const interestPaid = canInterest
@@ -231,6 +237,13 @@ export class PaymentsService {
       throw new BadRequestException(
         'เลือก "ลดเงินต้น" ไว้ — ยอดทั้งหมดต้องเป็นตัดเงินต้น',
       );
+    if (
+      paymentType === PaymentType.ARREARS &&
+      (interestPaid > 0 || principalPaid > 0)
+    )
+      throw new BadRequestException(
+        'เลือก "ชำระเฉพาะค้าง" ไว้ — ยอดทั้งหมดต้องเป็นยอดค้างเก่า',
+      );
 
     // เก็บคืนได้จากยอดที่ตัดหนี้สูญไปแล้ว — หักยอดขาดทุนลง ไม่ต้องเปิดยอดคืน
     const recovering = loan.status === LoanStatus.BAD_DEBT;
@@ -290,6 +303,72 @@ export class PaymentsService {
     await this.payments.save(payment);
     await this.loansService.applyBalances(loan);
     return payment;
+  }
+
+  /**
+   * พรีวิวชำระดอกล่วงหน้าหลายรอบ (รายวัน/ราย 7/10 วัน) — คำนวณว่าแต่ละรอบข้างหน้า
+   * ต้องเก็บดอกวันไหนเท่าไหร่ รวมทั้งหมดเท่าไหร่ โดยยังไม่บันทึกอะไร
+   */
+  async prepayQuote(loanId: string, count: number) {
+    const loan = await this.loansService.findOne(loanId);
+    if (loan.status !== LoanStatus.ACTIVE || loan.cycle === LoanCycle.MONTHLY)
+      throw new BadRequestException('ชำระล่วงหน้าได้เฉพาะยอดดอกลอย/คงที่');
+    const n = Math.max(1, Math.floor(count));
+    const step = cycleStep[loan.cycle as Exclude<LoanCycle, 'MONTHLY'>];
+    const cur = this.loansService.currentCycleInfo(loan);
+    const startDue = cur?.dueDate ?? this.nextDueDate(loan);
+    if (!startDue) throw new BadRequestException('ไม่พบรอบดอกที่จะชำระ');
+    const perCycle = this.loansService.interestPerCycle(loan);
+    const cycles: { dueDate: string; interest: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      const d = addDays(startDue, i * step);
+      const st = this.loansService.cycleStatusOn(loan, d);
+      const interest = st ? st.interestRemaining : perCycle;
+      if (interest > 0) cycles.push({ dueDate: d, interest });
+    }
+    return {
+      count: cycles.length,
+      total: round2(cycles.reduce((s, c) => s + c.interest, 0)),
+      perCycle,
+      cycles,
+    };
+  }
+
+  /**
+   * ชำระดอกล่วงหน้าหลายรอบในครั้งเดียว — บันทึกเป็นการจ่ายดอก 1 รายการต่อรอบ
+   * ลงวันครบกำหนดของรอบนั้น ให้ตกในหน้าต่างรอบพอดี (ตัดยอดตรงตามวันของแต่ละรอบ)
+   * เงินต้น/ยอดค้างไม่ถูกแตะ — เป็นการส่งดอกรอบข้างหน้าไว้ล่วงหน้าล้วนๆ
+   */
+  async prepayCycles(loanId: string, count: number): Promise<Payment[]> {
+    const quote = await this.prepayQuote(loanId, count);
+    if (quote.cycles.length === 0)
+      throw new BadRequestException('ไม่มีรอบดอกที่ต้องชำระล่วงหน้า');
+    const out: Payment[] = [];
+    for (const c of quote.cycles) {
+      out.push(
+        await this.record({
+          loanId,
+          paidDate: c.dueDate,
+          amount: c.interest,
+          paymentType: PaymentType.INTEREST,
+          interestPaid: c.interest,
+          arrearsPaid: 0,
+          principalPaid: 0,
+          note: 'ชำระดอกล่วงหน้า',
+        }),
+      );
+    }
+    return out;
+  }
+
+  /** วันครบกำหนดรอบถัดไป (สำรองเมื่อไม่มีรอบที่กำลังเดิน) */
+  private nextDueDate(loan: Loan): string | null {
+    const today = todayStr();
+    for (let i = 0; i <= 370; i++) {
+      const d = addDays(today, i);
+      if (this.loansService.isDueOn(loan, d)) return d;
+    }
+    return null;
   }
 
   /** ลบรายการที่บันทึกผิด — คืนยอดกลับตามเดิม */

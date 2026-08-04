@@ -87,7 +87,7 @@ export class FinanceService {
 
     const disbursed = loans
       .filter((l) => l.fromCapital)
-      .reduce((s, l) => s + l.principalOriginal, 0);
+      .reduce((s, l) => s + (l.capitalDisbursed ?? l.principalOriginal), 0);
     const collected = pays.reduce((s, p) => s + p.amount, 0);
     const sumTx = (t: CashTxType) =>
       txs.filter((x) => x.type === t).reduce((s, x) => s + x.amount, 0);
@@ -130,14 +130,21 @@ export class FinanceService {
     const entries: LedgerEntry[] = [];
 
     for (const l of loans) {
-      if (l.fromCapital)
+      if (l.fromCapital) {
+        // รียอด: เงินสดออกจริง = capitalDisbursed (ต้นใหม่ − ยอดเหลือเดิมที่ยกมา)
+        const cashOut = l.capitalDisbursed ?? l.principalOriginal;
         entries.push({
           date: l.startDate,
-          kind: 'ปล่อยกู้',
-          detail: `${l.debtor?.name ?? ''} — ต้น ฿${l.principalOriginal}`,
+          kind: l.refinancedFromId ? 'รียอด (ปล่อยเพิ่ม)' : 'ปล่อยกู้',
+          detail: `${l.debtor?.name ?? ''} — ${
+            l.refinancedFromId
+              ? `ต้นใหม่ ฿${l.principalOriginal} · จ่ายเพิ่ม ฿${cashOut}`
+              : `ต้น ฿${l.principalOriginal}`
+          }`,
           cashIn: 0,
-          cashOut: l.principalOriginal,
+          cashOut,
         });
+      }
     }
     for (const p of pays) {
       const loan = loanById.get(p.loanId);

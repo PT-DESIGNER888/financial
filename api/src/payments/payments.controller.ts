@@ -10,6 +10,7 @@ import {
 import { Type } from 'class-transformer';
 import {
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -48,6 +49,13 @@ class RecordPaymentDto {
   @IsOptional() @IsString() note?: string;
 }
 
+class PrepayDto {
+  @IsString() @IsNotEmpty() loanId: string;
+
+  /** จำนวนรอบดอกที่จะชำระล่วงหน้า (รวมรอบที่กำลังเดิน) */
+  @Type(() => Number) @IsInt() @IsPositive() count: number;
+}
+
 @Controller('payments')
 export class PaymentsController {
   constructor(private payments: PaymentsService) {}
@@ -77,6 +85,21 @@ export class PaymentsController {
       paymentType,
       Number.isFinite(override) ? override : undefined,
     );
+  }
+
+  /** พรีวิวชำระดอกล่วงหน้า N รอบ */
+  @Get('prepay-quote')
+  prepayQuote(
+    @Query('loanId') loanId: string,
+    @Query('count') count?: string,
+  ) {
+    return this.payments.prepayQuote(loanId, parseInt(count ?? '1', 10) || 1);
+  }
+
+  /** ชำระดอกล่วงหน้า N รอบในครั้งเดียว */
+  @Post('prepay')
+  prepay(@Body() dto: PrepayDto) {
+    return this.payments.prepayCycles(dto.loanId, dto.count);
   }
 
   @Delete(':id')

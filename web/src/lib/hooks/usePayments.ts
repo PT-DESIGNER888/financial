@@ -62,6 +62,39 @@ export function useRecordPayment() {
   });
 }
 
+/** พรีวิวชำระดอกล่วงหน้า N รอบ (รายวัน/ราย 7/10 วัน) */
+export interface PrepayQuote {
+  count: number;
+  total: number;
+  perCycle: number;
+  cycles: { dueDate: string; interest: number }[];
+}
+
+export function usePrepayQuote(loanId: string, count: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ['payments', 'prepay-quote', loanId, count],
+    queryFn: () =>
+      api<PrepayQuote>(
+        `/payments/prepay-quote?loanId=${loanId}&count=${count}`,
+      ),
+    enabled: enabled && count > 0,
+    staleTime: 0,
+  });
+}
+
+/** ชำระดอกล่วงหน้า N รอบในครั้งเดียว */
+export function usePrepayCycles() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { loanId: string; count: number }) =>
+      api<Payment[]>('/payments/prepay', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => invalidateMoney(qc),
+  });
+}
+
 export function useDeletePayment() {
   const qc = useQueryClient();
   return useMutation({

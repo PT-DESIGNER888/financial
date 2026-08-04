@@ -64,6 +64,8 @@ export const PaymentType = {
   PRINCIPAL: 'PRINCIPAL',
   /** ดอกรอบนี้ → ค้างเก่า → ตัดต้น */
   BOTH: 'BOTH',
+  /** ชำระเฉพาะยอดค้างเก่า — ไม่แตะดอกรอบนี้/เงินต้น */
+  ARREARS: 'ARREARS',
 } as const;
 export type PaymentType = (typeof PaymentType)[keyof typeof PaymentType];
 
@@ -76,6 +78,7 @@ export const ActivityType = {
   EDIT_CYCLE: 'EDIT_CYCLE', // แก้รอบดอก (เลื่อนวัน/ตกลงเก็บดอกจริง)
   DELETE_LOAN: 'DELETE_LOAN', // ลบยอดกู้
   CONVERT_DEAD: 'CONVERT_DEAD', // แปลงยอดตาย
+  REFINANCE: 'REFINANCE', // รียอด (ปิดสัญญาเก่า เปิดใหม่ยกยอดเหลือมา)
   EDIT_DEBTOR: 'EDIT_DEBTOR', // แก้ข้อมูลลูกหนี้
   DELETE_DEBTOR: 'DELETE_DEBTOR', // ลบลูกหนี้
 } as const;
