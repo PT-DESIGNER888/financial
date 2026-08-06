@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
+import { addDays as addDaysStr } from './../src/common/date.util';
 
 /**
  * ตรวจ flow เงินจริงของฟีเจอร์ใหม่บน SQLite ในหน่วยความจำ:
@@ -75,7 +76,7 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
     expect(g?.dueInterest).toBe(100); // ดอกวันปล่อยถึงกำหนดแล้ว
   });
 
-  it('ยอดรายสัปดาห์เปิดใหม่ — วันรับเงิน = วันที่ 1 เก็บดอกแรกวันเปิดเลย', async () => {
+  it('ยอดรายสัปดาห์เปิดใหม่ — วันเปิด = วันที่ 1 แต่ดอกแรกครบเมื่อครบรอบ (วันที่ 7)', async () => {
     const debtorId = await newDebtor('รายสัปดาห์');
     const loan = await http()
       .post('/loans')
@@ -89,15 +90,16 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
       .expect(201);
     const body = loan.body as { firstDueDate: string; startDate: string };
     expect(body.startDate).toBe(today);
-    expect(body.firstDueDate).toBe(today); // วันรับเงิน = วันที่ 1
+    // วันเปิด = วันที่ 1 → รายสัปดาห์ครบกำหนดวันที่ 7 = วันเปิด + 6 วัน
+    expect(body.firstDueDate).toBe(addDaysStr(today, 6));
 
-    // วันเปิดยอดถึงกำหนดเก็บดอกรอบแรกแล้ว
+    // วันเปิดยอดยังไม่ถึงกำหนดเก็บดอกรอบแรก
     const dash = await http().get('/dashboard/today').set(auth()).expect(200);
     const data = dash.body as {
       debtors: { debtorId: string; dueInterest: number }[];
     };
     const g = data.debtors.find((d) => d.debtorId === debtorId);
-    expect(g?.dueInterest).toBe(200);
+    expect(g?.dueInterest ?? 0).toBe(0);
   });
 
   it('จบต้นดอก (ผ่อนงวด) เปิดใหม่ — งวดแรกครบกำหนดวันปล่อย (วันรับเงิน = วันที่ 1)', async () => {

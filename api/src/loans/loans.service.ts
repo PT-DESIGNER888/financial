@@ -23,6 +23,7 @@ import {
   cycleStep,
   defaultFirstDue,
   dueDateAt,
+  firstDueForNewLoan,
   round2,
   splitInstallmentDue,
   type InstallmentPlan,
@@ -702,11 +703,13 @@ export class LoansService {
     const startDate =
       input.startDate ?? (isLegacy ? addDays(todayStr(), -1) : todayStr());
     const yesterday = addDays(todayStr(), -1);
-    // ยอดเปิดใหม่: firstDueDate = วันปล่อยกู้ (นับวันรับเงินเป็น "วันที่ 1") — งวด/ดอกแรก
-    //   เก็บตั้งแต่วันเปิดยอดเลย ทุกรอบ (รายวัน/สัปดาห์/10วัน)
-    //   accruedThrough = วันก่อนปล่อย เพื่อให้งวดแรก (วันปล่อย) ยังค้างอยู่ให้เก็บ
+    // ยอดเปิดใหม่: นับวันปล่อยกู้เป็น "วันที่ 1" แต่วันครบกำหนดขึ้นตามจำนวนวันของรอบ
+    //   รายวันครบวันเปิด, รายสัปดาห์ครบวันที่ 7, ราย10วันครบวันที่ 10 (ไม่ใช่ครบวันเปิดทุกรอบ)
+    //   accruedThrough = วันก่อนปล่อย เพื่อไม่ให้ accrue ย้อนก่อนวันเปิดยอด
     // ยอดเก่า (legacy): firstDueDate = null (สูตรเดิม), ไม่ accrue ย้อนก่อนวันขึ้นระบบ
-    const firstDueDate = isLegacy ? null : startDate;
+    const firstDueDate = isLegacy
+      ? null
+      : firstDueForNewLoan(startDate, input.cycle);
     const accruedThrough = isLegacy
       ? diffDays(startDate, yesterday) > 0
         ? yesterday
@@ -797,8 +800,10 @@ export class LoansService {
     const startDate = input.startDate ?? todayStr();
     if (input.firstDueDate && diffDays(startDate, input.firstDueDate) < 0)
       throw new BadRequestException('วันเริ่มชำระต้องไม่ก่อนวันปล่อยกู้');
-    // นับวันรับเงินเป็น "วันที่ 1" — งวดแรกเก็บวันปล่อยเลย เว้นแต่ผู้ใช้เลือกวันเอง
-    const firstDueDate = input.firstDueDate ?? startDate;
+    // นับวันรับเงินเป็น "วันที่ 1" แต่วันครบกำหนดงวดแรกขึ้นตามจำนวนวันของรอบ
+    //   (รายวันครบวันเปิด, รายสัปดาห์ครบวันที่ 7, ...) เว้นแต่ผู้ใช้เลือกวันเอง
+    const firstDueDate =
+      input.firstDueDate ?? firstDueForNewLoan(startDate, input.cycle);
 
     if (input.amortized) {
       if (!input.interestRatePercent || input.interestRatePercent <= 0)

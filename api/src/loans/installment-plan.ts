@@ -29,6 +29,19 @@ export function defaultFirstDue(startDate: string, cycle: LoanCycle): string {
   return addDays(startDate, cycleStep[cycle]);
 }
 
+/**
+ * วันครบกำหนดงวด/ดอกแรกของ "ยอดเปิดใหม่"
+ * นับวันเปิดยอดเป็น "วันที่ 1" แล้ววันครบกำหนดขึ้นตามจำนวนวันของรอบ
+ * เช่น เปิด 4 ส.ค. — รายวันครบ 4, รายสัปดาห์ครบ 10 (วันที่ 7), ราย10วันครบ 13 (วันที่ 10)
+ */
+export function firstDueForNewLoan(
+  startDate: string,
+  cycle: LoanCycle,
+): string {
+  if (cycle === LoanCycle.MONTHLY) return addMonths(startDate, 1);
+  return addDays(startDate, cycleStep[cycle] - 1);
+}
+
 export function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
