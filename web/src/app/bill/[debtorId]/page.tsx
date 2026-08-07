@@ -15,7 +15,40 @@ import {
 } from '@/lib/format';
 import { useBill } from '@/lib/hooks/useDashboard';
 import { toast } from '@/lib/toast-store';
-import type { BillData } from '@/lib/types';
+import type { BillData, TodayItem } from '@/lib/types';
+
+/**
+ * แยกยอดของสัญญาหนึ่งเป็นรายการตาม "สิ่งที่ถึงกำหนดจริง" ไม่ใช่ตามชนิดยอด
+ * วันที่มีนัดคืนต้นแต่ยังไม่ครบรอบดอก เคยขึ้นเป็น "ดอก<รอบ>" ทับยอดเงินต้น
+ * ทำให้อ่านแล้วเหมือนดอกหายไป — ต้องแยกบรรทัดให้เห็นว่าเงินก้อนไหนคืออะไร
+ */
+function dueLines(item: TodayItem): { label: string; amount: number }[] {
+  const lines: { label: string; amount: number }[] = [];
+  if (item.dueInterest > 0)
+    lines.push({
+      label: `ดอก${cycleLabel[item.cycle]}`,
+      amount: item.dueInterest,
+    });
+  if (item.dueInstallment > 0)
+    lines.push({
+      label: item.status === 'DEAD' ? 'ผ่อนยอดตาย' : 'ผ่อนงวด',
+      amount: item.dueInstallment,
+    });
+  if (item.duePrincipal > 0)
+    lines.push({ label: 'นัดคืนต้น', amount: item.duePrincipal });
+  // ไม่มีอะไรถึงกำหนด (ติดมาเพราะจ่ายล่วงหน้าไว้) — คงชื่อตามชนิดยอดไว้
+  if (lines.length === 0)
+    lines.push({ label: loanKindLabel(item), amount: item.dueTotal });
+  return lines;
+}
+
+function loanKindLabel(item: Pick<TodayItem, 'status' | 'cycle'>): string {
+  return item.status === 'DEAD'
+    ? 'ผ่อนยอดตาย'
+    : item.status === 'INSTALLMENT'
+      ? 'ผ่อนงวด'
+      : `ดอก${cycleLabel[item.cycle]}`;
+}
 
 export default function BillPage({
   params,
@@ -86,34 +119,27 @@ function BillView({ debtorId, date }: { debtorId: string; date: string }) {
               วันนี้ไม่มียอดถึงกำหนด
             </p>
           ) : (
-            <ul className="space-y-2.5">
+            <ul className="space-y-3">
               {data.items.map((item) => (
-                <li key={item.loanId} className="flex justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[15px] text-slate-700 dark:text-gray-200">
-                      {item.status === 'DEAD'
-                        ? 'ผ่อนยอดตาย'
-                        : item.status === 'INSTALLMENT'
-                          ? 'ผ่อนงวด'
-                          : `ดอก${cycleLabel[item.cycle]}`}
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-400">
-                      {item.status === 'ACTIVE'
-                        ? `ต้นเหลือ ฿${baht(item.outstandingPrincipal)}`
-                        : `ยอดเหลือ ฿${baht(item.deadBalance)}`}
-                    </p>
-                    {item.duePrincipal > 0 && (
-                      <p className="mt-0.5 text-xs font-medium text-primary">
-                        นัดคืนต้น ฿{baht(item.duePrincipal)}
+                <li key={item.loanId} className="space-y-1">
+                  {dueLines(item).map((line) => (
+                    <div key={line.label} className="flex justify-between gap-3">
+                      <p className="min-w-0 text-[15px] text-slate-700 dark:text-gray-200">
+                        {line.label}
                       </p>
-                    )}
-                  </div>
-                  <span
-                    data-money
-                    className="shrink-0 text-[15px] font-semibold text-slate-900 tabular-nums dark:text-white"
-                  >
-                    ฿{baht(item.dueTotal)}
-                  </span>
+                      <span
+                        data-money
+                        className="shrink-0 text-[15px] font-semibold text-slate-900 tabular-nums dark:text-white"
+                      >
+                        ฿{baht(line.amount)}
+                      </span>
+                    </div>
+                  ))}
+                  <p className="text-xs text-slate-500 dark:text-gray-400">
+                    {item.status === 'ACTIVE'
+                      ? `ต้นเหลือ ฿${baht(item.outstandingPrincipal)}`
+                      : `ยอดเหลือ ฿${baht(item.deadBalance)}`}
+                  </p>
                 </li>
               ))}
             </ul>
@@ -242,15 +268,9 @@ function billText(b: BillData): string {
     `แจ้งยอดชำระ — ${b.debtorName}`,
     thaiDateLong(b.date),
     '',
-    ...b.items.map((i) => {
-      const name =
-        i.status === 'DEAD'
-          ? 'ผ่อนยอดตาย'
-          : i.status === 'INSTALLMENT'
-            ? 'ผ่อนงวด'
-            : `ดอก${cycleLabel[i.cycle]}`;
-      return `- ${name} ฿${baht(i.dueTotal)}`;
-    }),
+    ...b.items.flatMap((i) =>
+      dueLines(i).map((l) => `- ${l.label} ฿${baht(l.amount)}`),
+    ),
     '',
     `รวมต้องส่งวันนี้ ฿${baht(b.dueTotal)}`,
   ];
