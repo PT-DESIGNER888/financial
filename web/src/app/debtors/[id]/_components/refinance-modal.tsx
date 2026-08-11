@@ -7,6 +7,7 @@ import {
   ModalButtons,
   SelectMenu,
   Segmented,
+  TextInput,
 } from '@/components/form';
 import { baht, cycleLabel } from '@/lib/format';
 import { useRefinance } from '@/lib/hooks/useLoans';
@@ -69,23 +70,42 @@ export function RefinanceModal({
   const [count, setCount] = useState(
     loan.installmentCount ? String(loan.installmentCount) : '',
   );
+  // กรอกได้ทั้ง "งวดละ" (เจ้าของร้านคิดแบบนี้) และ "ดอกรวม" — อีกฝั่งคำนวณให้เอง
+  const [insMode, setInsMode] = useState<'PER' | 'INTEREST'>('PER');
+  const [per, setPer] = useState('');
   const [interest, setInterest] = useState('');
   const [insCycle, setInsCycle] = useState<LoanCycle>(loan.cycle);
+  const [rounded, setRounded] = useState(true);
   const [error, setError] = useState('');
   const refinance = useRefinance();
 
   const newPrincipal = parseFloat(principal) || 0;
   const rateNum = parseFloat(rate) || 0;
   const countNum = parseInt(count, 10) || 0;
+  const perNum = parseFloat(per) || 0;
   const interestNum = parseFloat(interest) || 0;
   const netCash = round2(newPrincipal - remaining);
-  const installmentTotal = round2(newPrincipal + interestNum);
+  // โหมดงวดละ: ผ่อนรวม = งวดละ × จำนวนงวด (งวดตรงเป๊ะ ไม่มีเศษ)
+  const installmentTotal =
+    insMode === 'PER'
+      ? round2(perNum * countNum)
+      : round2(newPrincipal + interestNum);
+  const totalInterest = round2(installmentTotal - newPrincipal);
+  // งวดจริงที่ระบบจะหาร (ต้องตรงกับ buildInstallmentPlan ฝั่ง API)
   const perInstallment =
-    countNum > 0 ? round2(installmentTotal / countNum) : 0;
+    countNum > 0
+      ? rounded
+        ? Math.floor(installmentTotal / countNum)
+        : round2(installmentTotal / countNum)
+      : 0;
+  const lastInstallment =
+    countNum > 0 ? round2(installmentTotal - perInstallment * (countNum - 1)) : 0;
 
+  const insInvalid =
+    countNum < 1 ||
+    (insMode === 'PER' ? perNum <= 0 || totalInterest < 0 : interestNum < 0);
   const invalid =
-    newPrincipal < remaining ||
-    (kind === 'REVOLVING' ? rateNum <= 0 : countNum < 1 || interestNum < 0);
+    newPrincipal < remaining || (kind === 'REVOLVING' ? rateNum <= 0 : insInvalid);
 
   const save = async () => {
     setError('');
@@ -103,14 +123,22 @@ export function RefinanceModal({
       };
     } else {
       if (countNum < 1) return setError('จำนวนงวดต้องอย่างน้อย 1 งวด');
-      if (interestNum < 0) return setError('ดอกเบี้ยรวมต้องไม่ติดลบ');
+      if (insMode === 'PER' && perNum <= 0)
+        return setError('ยอดผ่อนต่องวดต้องมากกว่า 0');
+      if (totalInterest < 0)
+        return setError(
+          insMode === 'PER'
+            ? `ผ่อนรวม ฿${baht(installmentTotal)} น้อยกว่าต้นใหม่ ฿${baht(newPrincipal)}`
+            : 'ดอกเบี้ยรวมต้องไม่ติดลบ',
+        );
       input = {
         debtorId: loan.debtorId,
         type: 'INSTALLMENT',
         principalOriginal: newPrincipal,
         installmentCount: countNum,
-        totalInterest: interestNum,
+        totalInterest,
         cycle: insCycle,
+        roundInstallments: rounded,
       };
     }
     try {
@@ -225,21 +253,51 @@ export function RefinanceModal({
                 />
               </Field>
             </div>
-            <FormInput
-              label="ดอกเบี้ยรวมทั้งสัญญา (บาท) *"
-              type="number"
-              inputMode="decimal"
-              align="right"
-              value={interest}
-              onChange={(e) => {
-                setInterest(e.target.value);
-                setError('');
-              }}
-            />
-            {countNum > 0 && (
-              <p className="text-xs text-slate-500 dark:text-gray-400">
-                ผ่อนรวม ฿{baht(installmentTotal)} · งวดละ ฿{baht(perInstallment)}{' '}
-                × {countNum} งวด
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="block text-sm font-medium text-slate-600 md:text-[15px] dark:text-gray-300">
+                  {insMode === 'PER'
+                    ? 'ยอดผ่อนต่องวด (บาท) *'
+                    : 'ดอกเบี้ยรวมทั้งสัญญา (บาท) *'}
+                </label>
+                <Segmented
+                  value={insMode}
+                  onChange={setInsMode}
+                  options={[
+                    { value: 'PER', label: 'งวดละ' },
+                    { value: 'INTEREST', label: 'ดอกรวม' },
+                  ]}
+                />
+              </div>
+              <TextInput
+                type="number"
+                inputMode="decimal"
+                align="right"
+                value={insMode === 'PER' ? per : interest}
+                onChange={(e) => {
+                  if (insMode === 'PER') setPer(e.target.value);
+                  else setInterest(e.target.value);
+                  setError('');
+                }}
+              />
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-gray-300">
+              <input
+                type="checkbox"
+                checked={rounded}
+                onChange={(e) => setRounded(e.target.checked)}
+              />
+              ปัดยอดต่องวดเป็นบาทเต็ม (เศษไปรวมงวดสุดท้าย)
+            </label>
+
+            {countNum > 0 && installmentTotal > 0 && (
+              <p className="text-xs leading-relaxed text-slate-500 dark:text-gray-400">
+                ผ่อนรวม ฿{baht(installmentTotal)} (ต้น ฿{baht(newPrincipal)} +
+                ดอก ฿{baht(totalInterest)}) ·{' '}
+                {perInstallment === lastInstallment
+                  ? `งวดละ ฿${baht(perInstallment)} × ${countNum} งวด`
+                  : `${countNum - 1} งวดละ ฿${baht(perInstallment)} · งวดสุดท้าย ฿${baht(lastInstallment)}`}
               </p>
             )}
           </>

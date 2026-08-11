@@ -91,6 +91,40 @@ describe('buildInstallmentPlan (ดอกคงที่ / flat)', () => {
     expect(sumScheduled(plan.rows)).toBe(10000);
   });
 
+  // เคสจากหน้ารียอด: ต้น 1,400 ผ่อน 13 งวด
+  it('กรอกงวดละ 150 × 13 งวด → ทุกงวด 150 พอดี ไม่มีเศษ', () => {
+    const per = 150;
+    const count = 13;
+    const principal = 1400;
+    const plan = buildInstallmentPlan({
+      principalOriginal: principal,
+      installmentCount: count,
+      cycle: LoanCycle.DAILY,
+      startDate: '2026-08-10',
+      // งวดละ × จำนวนงวด แปลงกลับเป็นดอกรวม
+      totalInterest: per * count - principal,
+      roundInstallments: true,
+    });
+    expect(plan.installmentTotal).toBe(1950);
+    expect(plan.installmentAmount).toBe(150);
+    expect(plan.rows.every((r) => r.scheduled === 150)).toBe(true);
+    expect(sumScheduled(plan.rows)).toBe(1950);
+  });
+
+  it('ดอกรวม 600 + ปัดบาทเต็ม → 153 × 12 งวด งวดสุดท้าย 164', () => {
+    const plan = buildInstallmentPlan({
+      principalOriginal: 1400,
+      installmentCount: 13,
+      cycle: LoanCycle.DAILY,
+      startDate: '2026-08-10',
+      totalInterest: 600,
+      roundInstallments: true,
+    });
+    expect(plan.installmentAmount).toBe(153);
+    expect(plan.rows[12].scheduled).toBe(164);
+    expect(sumScheduled(plan.rows)).toBe(2000);
+  });
+
   it('ค่าธรรมเนียมถูกรวมในยอดรวมสัญญา', () => {
     const plan = buildInstallmentPlan({
       principalOriginal: 1000,
