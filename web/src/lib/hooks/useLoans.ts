@@ -151,6 +151,11 @@ export interface EditLoanInput {
   installmentAmount?: number;
   /** true = ยอดตายนี้ไม่มีกำหนดงวด ทยอยคืนเมื่อไหร่ก็ได้ */
   clearInstallment?: boolean;
+  /** ยอดผ่อนงวด: แก้แผนผ่อนของยอดที่เปิดไปแล้ว */
+  installmentCount?: number;
+  /** ยอดผ่อนงวด: ผ่อนรวมใหม่ (ต้น + ดอก + ค่าธรรมเนียม) */
+  installmentTotal?: number;
+  roundInstallments?: boolean;
   /** นัดคืนต้น: วันที่ลูกหนี้ตกลงจะเอาเงินก้อนมาตัดต้น */
   principalDueDate?: string;
   principalDueAmount?: number;

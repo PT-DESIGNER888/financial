@@ -322,9 +322,9 @@ export function LoanCard({
 
       {showManage && (
         <div className="mt-2 flex flex-wrap gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
-          {isOpen && !isInstallment && onEdit && (
+          {isOpen && onEdit && (
             <ManageBtn onClick={onEdit} icon={<IconEdit className="size-3.5" />}>
-              แก้เงื่อนไข
+              {isInstallment ? 'แก้แผนผ่อน' : 'แก้เงื่อนไข'}
             </ManageBtn>
           )}
           {onAdjust && (

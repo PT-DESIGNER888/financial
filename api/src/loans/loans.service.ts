@@ -939,10 +939,7 @@ export class LoansService {
     input: Parameters<LoansService['create']>[0],
   ): Promise<Loan> {
     const old = await this.findOne(oldLoanId);
-    if (
-      old.status === LoanStatus.CLOSED ||
-      old.status === LoanStatus.BAD_DEBT
-    )
+    if (old.status === LoanStatus.CLOSED || old.status === LoanStatus.BAD_DEBT)
       throw new BadRequestException('รียอดได้เฉพาะยอดที่ยังเปิดอยู่');
     // ยอดเหลือเดิม = ยอดคงเหลือที่ยังเก็บไม่ได้ (ยอดตาย/ผ่อนงวด = deadBalance, ยอดปกติ = ต้น + ค้าง)
     const remaining = this.lossOf(old);
@@ -1070,6 +1067,10 @@ export class LoansService {
       cycle?: RevolvingCycle;
       /** ยอดตาย: งวดผ่อน/10 วัน (null = ทยอยคืนเมื่อไหร่ก็ได้) */
       installmentAmount?: number | null;
+      /** ยอดผ่อนงวด: แก้แผนผ่อน (จำนวนงวด / ผ่อนรวม / ปัดยอดต่องวด) */
+      installmentCount?: number;
+      installmentTotal?: number;
+      roundInstallments?: boolean;
       principalDueDate?: string | null;
       principalDueAmount?: number | null;
       note?: string | null;
@@ -1080,6 +1081,10 @@ export class LoansService {
       interestRatePercent: loan.interestRatePercent,
       cycle: loan.cycle,
       installmentAmount: loan.installmentAmount,
+      installmentCount: loan.installmentCount,
+      installmentTotal: loan.installmentTotal,
+      roundInstallments: loan.roundInstallments,
+      deadBalance: loan.deadBalance,
       principalDueDate: loan.principalDueDate,
       principalDueAmount: loan.principalDueAmount,
       note: loan.note,
@@ -1104,6 +1109,54 @@ export class LoansService {
         throw new BadRequestException('งวดผ่อนต้องมากกว่า 0');
       patch.installmentAmount = input.installmentAmount;
     }
+    // แก้แผนผ่อนของยอดที่เปิดไปแล้ว (เช่น รียอดแล้วงวดไม่ตรงกับที่ตกลงกับลูกหนี้)
+    // ยอดที่จ่ายมาแล้วคงเดิม — ยอดคงเหลือขยับตามผ่อนรวมใหม่
+    if (
+      input.installmentCount !== undefined ||
+      input.installmentTotal !== undefined ||
+      input.roundInstallments !== undefined
+    ) {
+      if (loan.status !== LoanStatus.INSTALLMENT)
+        throw new BadRequestException('แก้แผนผ่อนได้เฉพาะยอดผ่อนงวด');
+      if (loan.amortized && input.installmentTotal !== undefined)
+        throw new BadRequestException(
+          'ยอดลดต้นลดดอกคิดผ่อนรวมจากอัตราดอก แก้ผ่อนรวมตรงๆ ไม่ได้',
+        );
+      const count = input.installmentCount ?? loan.installmentCount ?? 0;
+      if (!Number.isInteger(count) || count < 1)
+        throw new BadRequestException('จำนวนงวดต้องเป็นจำนวนเต็มตั้งแต่ 1 งวด');
+      const paid = round2(
+        (loan.installmentTotal ?? 0) - (loan.deadBalance ?? 0),
+      );
+      const total = input.installmentTotal ?? loan.installmentTotal ?? 0;
+      const totalInterest = round2(total - loan.principalOriginal - loan.fee);
+      if (!loan.amortized && totalInterest < 0)
+        throw new BadRequestException(
+          `ผ่อนรวมต้องไม่น้อยกว่าเงินต้น + ค่าธรรมเนียม (฿${round2(loan.principalOriginal + loan.fee)})`,
+        );
+      const plan = buildInstallmentPlan({
+        principalOriginal: loan.principalOriginal,
+        installmentCount: count,
+        cycle: loan.cycle,
+        startDate: loan.startDate,
+        firstDueDate: loan.firstDueDate,
+        amortized: loan.amortized,
+        totalInterest,
+        interestRatePercent: loan.interestRatePercent,
+        fee: loan.fee,
+        roundInstallments: input.roundInstallments ?? loan.roundInstallments,
+      });
+      if (plan.installmentTotal < paid)
+        throw new BadRequestException(
+          `ผ่อนรวมใหม่ (฿${plan.installmentTotal}) น้อยกว่ายอดที่เก็บมาแล้ว (฿${paid})`,
+        );
+      patch.installmentCount = plan.installmentCount;
+      patch.installmentTotal = plan.installmentTotal;
+      patch.installmentAmount = plan.installmentAmount;
+      patch.roundInstallments =
+        input.roundInstallments ?? loan.roundInstallments;
+      patch.deadBalance = round2(plan.installmentTotal - paid);
+    }
     if (input.principalDueDate !== undefined)
       patch.principalDueDate = input.principalDueDate;
     if (input.principalDueAmount !== undefined) {
@@ -1125,7 +1178,10 @@ export class LoansService {
       loanId: id,
       debtorId: loan.debtorId,
       debtorName: loan.debtor?.name ?? null,
-      message: 'แก้เงื่อนไขยอดกู้',
+      message:
+        patch.installmentTotal !== undefined
+          ? `แก้แผนผ่อน (${patch.installmentCount} งวด · งวดละ ฿${patch.installmentAmount} · ผ่อนรวม ฿${patch.installmentTotal})`
+          : 'แก้เงื่อนไขยอดกู้',
       meta: { before, after: { ...before, ...patch } },
     });
     return this.findOne(id);

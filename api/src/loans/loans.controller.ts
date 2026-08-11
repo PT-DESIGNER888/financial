@@ -182,6 +182,23 @@ class EditLoanDto {
   /** true = ยอดตายนี้ไม่มีกำหนดงวดตายตัว ทยอยคืนเมื่อไหร่ก็ได้ */
   @IsOptional() @IsBoolean() clearInstallment?: boolean;
 
+  /** ยอดผ่อนงวด: แก้แผนผ่อนของยอดที่เปิดไปแล้ว */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  installmentCount?: number;
+
+  /** ยอดผ่อนงวด: ผ่อนรวมใหม่ (ต้น + ดอก + ค่าธรรมเนียม) */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
+  installmentTotal?: number;
+
+  /** ยอดผ่อนงวด: ปัดยอดต่องวดเป็นบาทเต็ม เศษไปงวดสุดท้าย */
+  @IsOptional() @IsBoolean() roundInstallments?: boolean;
+
   /** นัดคืนต้น: วันที่ตกลงจะเอาเงินก้อนมาตัดต้น (ล้างนัดใช้ clearPrincipalDue) */
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) principalDueDate?: string;
 

@@ -248,3 +248,111 @@ describe('LoansService.cycleStatusOn', () => {
     expect(s?.interestPaid).toBe(0); // จ่ายวันที่ 13 อยู่นอกช่วง (13, 20]
   });
 });
+
+describe('LoansService.editTerms — แก้แผนผ่อนของยอดที่เปิดแล้ว', () => {
+  // เคสจริง: รียอดแล้วงวดออกมา 153.85 ทั้งที่ตกลงกับลูกหนี้ไว้ 150 × 13 งวด
+  const installmentLoan = (over: Partial<Loan> = {}): Loan =>
+    ({
+      id: 'L1',
+      debtorId: 'D1',
+      status: LoanStatus.INSTALLMENT,
+      cycle: LoanCycle.DAILY,
+      interestMode: InterestMode.FLAT,
+      amortized: false,
+      principalOriginal: 1_400,
+      outstandingPrincipal: 1_400,
+      interestRatePercent: 0,
+      arrears: 0,
+      fee: 0,
+      startDate: '2026-08-10',
+      firstDueDate: '2026-08-10',
+      accruedThrough: '2026-08-09',
+      installmentCount: 13,
+      installmentTotal: 2_000,
+      installmentAmount: 153.85,
+      roundInstallments: false,
+      deadBalance: 2_000,
+      payments: [],
+      cycles: [],
+      ...over,
+    }) as Loan;
+
+  /** service ที่อ่าน/เขียน loan ก้อนเดียวในหน่วยความจำ — คืน patch ที่ถูกบันทึก */
+  const serviceFor = (loan: Loan) => {
+    const saved: Partial<Loan>[] = [];
+    const repo = {
+      findOne: () => Promise.resolve(loan),
+      update: (_id: string, patch: Partial<Loan>) => {
+        saved.push(patch);
+        Object.assign(loan, patch);
+        return Promise.resolve({});
+      },
+    };
+    const cycleRows = {
+      create: (row: unknown) => row,
+      save: (rows: unknown) => Promise.resolve(rows),
+      update: () => Promise.resolve({}),
+      delete: () => Promise.resolve({}),
+    };
+    const svc = new LoansService(
+      repo as never,
+      cycleRows as never,
+      {
+        log: () => Promise.resolve(),
+      } as never,
+    );
+    return { svc, saved };
+  };
+
+  it('แก้เป็นงวดละ 150 × 13 งวด → ทุกงวด 150 ยอดคงเหลือตามผ่อนรวมใหม่', async () => {
+    const loan = installmentLoan();
+    const { svc, saved } = serviceFor(loan);
+    await svc.editTerms('L1', {
+      installmentCount: 13,
+      installmentTotal: 150 * 13,
+      roundInstallments: true,
+    });
+    expect(saved[0]).toMatchObject({
+      installmentCount: 13,
+      installmentTotal: 1_950,
+      installmentAmount: 150,
+      deadBalance: 1_950,
+    });
+  });
+
+  it('เงินที่เก็บมาแล้วไม่ถูกแตะ — ยอดคงเหลือ = ผ่อนรวมใหม่ − ที่เก็บมาแล้ว', async () => {
+    // เก็บมาแล้ว 500 (2,000 − 1,500)
+    const loan = installmentLoan({ deadBalance: 1_500 });
+    const { svc, saved } = serviceFor(loan);
+    await svc.editTerms('L1', {
+      installmentCount: 13,
+      installmentTotal: 1_950,
+      roundInstallments: true,
+    });
+    expect(saved[0]).toMatchObject({ deadBalance: 1_450 });
+  });
+
+  it('ผ่อนรวมใหม่น้อยกว่าที่เก็บมาแล้ว → ปฏิเสธ', async () => {
+    const loan = installmentLoan({ deadBalance: 200 }); // เก็บมาแล้ว 1,800
+    const { svc } = serviceFor(loan);
+    await expect(
+      svc.editTerms('L1', { installmentTotal: 1_500 }),
+    ).rejects.toThrow(/น้อยกว่ายอดที่เก็บมาแล้ว/);
+  });
+
+  it('ผ่อนรวมน้อยกว่าเงินต้น → ปฏิเสธ', async () => {
+    const loan = installmentLoan();
+    const { svc } = serviceFor(loan);
+    await expect(
+      svc.editTerms('L1', { installmentTotal: 1_000 }),
+    ).rejects.toThrow(/ไม่น้อยกว่าเงินต้น/);
+  });
+
+  it('แก้แผนผ่อนกับยอดที่ไม่ใช่ยอดผ่อนงวด → ปฏิเสธ', async () => {
+    const loan = installmentLoan({ status: LoanStatus.ACTIVE });
+    const { svc } = serviceFor(loan);
+    await expect(svc.editTerms('L1', { installmentCount: 10 })).rejects.toThrow(
+      /เฉพาะยอดผ่อนงวด/,
+    );
+  });
+});
