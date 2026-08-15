@@ -185,6 +185,18 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
     expect(newLoan.installmentCount).toBe(13);
     expect(newLoan.capitalDisbursed).toBe(600); // ปล่อยเงินสดจริงแค่ 600
 
+    // รียอด: งวดแรกเก็บ "พรุ่งนี้" ไม่ใช่วันรียอด (ของวันนี้ส่งไปกับสัญญาเก่าแล้ว)
+    const newSched = await http()
+      .get(`/loans/${newLoan.id}/schedule`)
+      .set(auth())
+      .expect(200);
+    const ns = newSched.body as {
+      rows: { dueDate: string }[];
+      dueNow: number;
+    };
+    expect(ns.rows[0].dueDate).toBe(addDaysStr(today, 1));
+    expect(ns.dueNow).toBe(0); // วันรียอดไม่มียอดต้องเก็บซ้ำ
+
     const oldAfter = await http().get(`/loans/${oldId}`).set(auth());
     expect((oldAfter.body as { status: string }).status).toBe('CLOSED');
   });
@@ -305,9 +317,12 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
       principalOriginal: number;
       capitalDisbursed: number;
       status: string;
+      firstDueDate: string;
     };
     expect(newLoan.principalOriginal).toBe(1_000);
     expect(newLoan.capitalDisbursed).toBe(600);
+    // รียอด: ดอกรอบแรกเก็บพรุ่งนี้ ไม่ใช่วันรียอด (ดอกของวันนี้เก็บไปกับสัญญาเก่าแล้ว)
+    expect(newLoan.firstDueDate).toBe(addDaysStr(today, 1));
 
     // สัญญาเดิมต้องปิด
     const oldAfter = await http().get(`/loans/${oldId}`).set(auth());

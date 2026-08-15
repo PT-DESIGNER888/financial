@@ -707,9 +707,12 @@ export class LoansService {
     //   รายวันครบวันเปิด, รายสัปดาห์ครบวันที่ 7, ราย10วันครบวันที่ 10 (ไม่ใช่ครบวันเปิดทุกรอบ)
     //   accruedThrough = วันก่อนปล่อย เพื่อไม่ให้ accrue ย้อนก่อนวันเปิดยอด
     // ยอดเก่า (legacy): firstDueDate = null (สูตรเดิม), ไม่ accrue ย้อนก่อนวันขึ้นระบบ
+    // ระบุ firstDueDate มาเอง (เช่น รียอด — วันที่ 1 คือวันถัดไป) ใช้ตามที่ระบุ
+    if (input.firstDueDate && diffDays(startDate, input.firstDueDate) < 0)
+      throw new BadRequestException('วันเก็บรอบแรกต้องไม่ก่อนวันปล่อยกู้');
     const firstDueDate = isLegacy
       ? null
-      : firstDueForNewLoan(startDate, input.cycle);
+      : (input.firstDueDate ?? firstDueForNewLoan(startDate, input.cycle));
     const accruedThrough = isLegacy
       ? diffDays(startDate, yesterday) > 0
         ? yesterday
@@ -933,6 +936,10 @@ export class LoansService {
    * เก็บไว้ที่ capitalDisbursed เพื่อให้เงินสดในมือหักแค่ส่วนที่ปล่อยจริง —
    * ยอดเหลือเดิมยกมาเป็นต้น ไม่ได้ปล่อยเงินสดซ้ำ
    * ปิดสัญญาเก่าเฉยๆ ไม่บันทึกยอดปิดเต็มสัญญา (ไม่งั้นเงินในระบบไม่ตรงกับเงินจริง)
+   *
+   * วันเก็บรอบแรก: นับ "วันที่ 1 = วันถัดไป" ไม่ใช่วันรียอด — ต่างจากยอดเปิดใหม่ที่นับวันปล่อยเงิน
+   * เป็นวันที่ 1 เพราะวันรียอดลูกหนี้ส่งของวันนั้นไปกับสัญญาเก่าแล้ว ถ้านับซ้ำจะโดนเก็บ 2 ครั้งวันเดียว
+   * (รายวัน = พรุ่งนี้, ทุก 7/10 วัน = +7/+10, รายเดือน = +1 เดือน)
    */
   async refinance(
     oldLoanId: string,
@@ -947,7 +954,14 @@ export class LoansService {
       throw new BadRequestException('ยอดเดิมไม่มียอดเหลือให้รียอด');
 
     // เปิดสัญญาใหม่ (ลูกหนี้คนเดิมเสมอ) — ต้นใหม่รวมยอดเหลือเดิมที่ยกมาแล้ว
-    const created = await this.create({ ...input, debtorId: old.debtorId });
+    const startDate = input.startDate ?? todayStr();
+    const created = await this.create({
+      ...input,
+      debtorId: old.debtorId,
+      startDate,
+      firstDueDate:
+        input.firstDueDate ?? defaultFirstDue(startDate, input.cycle),
+    });
     const netCash = round2(created.principalOriginal - remaining);
     if (netCash < 0) {
       // ย้อนกลับ: ลบยอดใหม่ที่เพิ่งสร้าง แล้วแจ้งเตือน

@@ -318,6 +318,10 @@ export function RefinanceModal({
           = ต้นใหม่ ฿{baht(newPrincipal)} − ยอดเหลือเดิม ฿{baht(remaining)} ·
           ระบบหักเงินสดในมือแค่ส่วนที่จ่ายเพิ่ม ไม่นับยอดที่ยกมาซ้ำ
         </p>
+        <p className="text-xs leading-relaxed text-slate-500 dark:text-gray-400">
+          เริ่มเก็บรอบแรกโดยนับ <strong>พรุ่งนี้เป็นวันที่ 1</strong> —
+          ของวันรียอดถือว่าเก็บไปกับสัญญาเดิมแล้ว
+        </p>
 
         {error && (
           <p className="text-sm font-medium text-red-600 dark:text-red-400">
