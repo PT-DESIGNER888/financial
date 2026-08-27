@@ -119,6 +119,51 @@ describe('LoansService ยอดหนี้สูญ (lossOf / setLoss)', () =>
   });
 });
 
+describe('LoansService.revivedPrincipal (นำกลับเป็นหนี้ปกติ)', () => {
+  it('ยอดตายที่ผ่อนมาบางส่วน — ยกยอดคงเหลือ (deadBalance) เป็นต้นใหม่ ล้างค้าง', () => {
+    // แปลงตอนต้น 12,000 (ต้น 10,000 + ค้าง 2,000) ผ่อนช่วงตายไป 3,000 → เหลือ 9,000
+    const loan = activeLoan({
+      status: LoanStatus.DEAD,
+      deadDate: '2026-06-01',
+      deadBalance: 9_000,
+      outstandingPrincipal: 10_000,
+      arrears: 2_000,
+    });
+    expect(service.revivedPrincipal(loan)).toEqual({
+      outstandingPrincipal: 9_000,
+      arrears: 0,
+    });
+  });
+
+  it('หนี้สูญที่เคยเป็นยอดตาย — ยึด deadBalance เช่นกัน', () => {
+    const loan = activeLoan({
+      status: LoanStatus.BAD_DEBT,
+      deadDate: '2026-06-01',
+      deadBalance: 4_800,
+      outstandingPrincipal: 6_000,
+      arrears: 0,
+    });
+    expect(service.revivedPrincipal(loan)).toEqual({
+      outstandingPrincipal: 4_800,
+      arrears: 0,
+    });
+  });
+
+  it('ยอดปกติที่แค่ปิด/ตัดหนี้สูญ (ไม่เคยตรึงยอด) — คงต้น/ค้างเดิม', () => {
+    const loan = activeLoan({
+      status: LoanStatus.CLOSED,
+      deadDate: null,
+      deadBalance: null,
+      outstandingPrincipal: 3_600,
+      arrears: 1_200,
+    });
+    expect(service.revivedPrincipal(loan)).toEqual({
+      outstandingPrincipal: 3_600,
+      arrears: 1_200,
+    });
+  });
+});
+
 describe('LoansService.isDueOn', () => {
   it('รายสัปดาห์ = วันเดิมของสัปดาห์ถัดไป (เปิดจันทร์ → ครบกำหนดทุกจันทร์)', () => {
     // 2026-07-06 = วันจันทร์

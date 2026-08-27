@@ -264,6 +264,45 @@ async function main() {
         },
       ],
     },
+    {
+      name: 'เอกชัย ห่างหาย',
+      phone: '084-777-8899',
+      lineId: 'ekachai.hh',
+      note: SEED_TAG,
+      creditNote: 'เคยขาดการติดต่อ — มีทั้งยอดตายและหนี้สูญไว้ทดสอบเปิดคืน',
+      emergencyContacts: [
+        {
+          name: 'เอมอร ห่างหาย',
+          phone: '084-777-8800',
+          line: 'aemon.hh',
+          note: 'พี่สาว',
+        },
+      ],
+      loans: [
+        {
+          // ยอดตาย: กู้ 12,000 หยุดดอก ตรึงยอด ทยอยคืน 500/10วัน
+          principalOriginal: 12000,
+          outstandingPrincipal: 12000,
+          interestRatePercent: 2,
+          cycle: 'DAILY',
+          interestMode: 'FLOATING',
+          startDate: addDays(today, -30),
+          note: 'เคยขาดติดต่อ → แปลงเป็นยอดตาย (ตรึง 12,000)',
+          after: { dead: { installmentAmount: 500 } },
+        },
+        {
+          // หนี้สูญ: กู้ 8,000 ตัดหนี้สูญไปแล้ว (ไว้ทดสอบเปิดยอดคืน)
+          principalOriginal: 8000,
+          outstandingPrincipal: 8000,
+          interestRatePercent: 2,
+          cycle: 'DAILY',
+          interestMode: 'FLOATING',
+          startDate: addDays(today, -60),
+          note: 'ขาดติดต่อยาว → ตัดหนี้สูญ (ตรึงขาดทุน 8,000)',
+          after: { writeOff: { reason: 'ขาดการติดต่อเกิน 2 เดือน' } },
+        },
+      ],
+    },
   ];
 
   for (const person of people) {
@@ -276,18 +315,41 @@ async function main() {
 
     const createdLoans = [];
     for (const loanBody of loans) {
-      const loan = await api(token, '/loans', {
+      const { after, ...body } = loanBody;
+      let loan = await api(token, '/loans', {
         method: 'POST',
-        body: { debtorId: debtor.id, ...loanBody },
+        body: { debtorId: debtor.id, ...body },
       });
       createdLoans.push(loan);
       const hint =
         loan.status === 'INSTALLMENT'
           ? `ผ่อน ${loan.installmentAmount}/งวด · คงเหลือ ${loan.deadBalance}`
           : `ต้น ${loan.outstandingPrincipal} · ค้าง ${loan.arrears} · ดอก ${loan.interestRatePercent}%`;
-      console.log(
-        `  └ ${loan.contractNumber} · ${loan.status} · ${hint}`,
-      );
+      console.log(`  └ ${loan.contractNumber} · ${loan.status} · ${hint}`);
+
+      // แปลงเป็นยอดตาย / ตัดหนี้สูญ เพื่อให้มีตัวอย่างทุกสถานะไว้ทดสอบ
+      if (after?.dead) {
+        loan = await api(token, `/loans/${loan.id}/dead`, {
+          method: 'POST',
+          body: after.dead.installmentAmount
+            ? { installmentAmount: after.dead.installmentAmount }
+            : {},
+        });
+        createdLoans[createdLoans.length - 1] = loan;
+        console.log(
+          `    → แปลงเป็นยอดตาย · ตรึง ${loan.deadBalance}${
+            loan.installmentAmount ? ` · ผ่อน ${loan.installmentAmount}/10วัน` : ''
+          }`,
+        );
+      }
+      if (after?.writeOff) {
+        loan = await api(token, `/loans/${loan.id}/write-off`, {
+          method: 'POST',
+          body: { reason: after.writeOff.reason ?? 'ลูกค้าขาดการติดต่อ' },
+        });
+        createdLoans[createdLoans.length - 1] = loan;
+        console.log(`    → ตัดหนี้สูญ (${after.writeOff.reason ?? 'ขาดติดต่อ'})`);
+      }
     }
 
     for (const pay of pays ?? []) {

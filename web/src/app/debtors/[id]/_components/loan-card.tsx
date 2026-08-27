@@ -151,6 +151,23 @@ export function LoanCard({
     }
   };
 
+  // ยอดตายกลับมาเป็นหนี้ปกติ (ลูกหนี้ที่เคยขาดติดต่อกลับมาชำระ)
+  const backToNormal = async () => {
+    const ok = await confirmDialog({
+      title: 'นำกลับเป็นหนี้ปกติ?',
+      detail:
+        'ยอดตายจะกลับมาเป็นหนี้ปกติและเดินดอกใหม่ตั้งแต่วันนี้ (ไม่คิดดอกย้อนช่วงที่เป็นยอดตาย) ประวัติการจ่ายเดิมยังอยู่ครบ',
+      confirmLabel: 'นำกลับเป็นหนี้ปกติ',
+    });
+    if (!ok) return;
+    try {
+      await reopenLoan.mutateAsync({ id: loan.id });
+      toast('นำกลับเป็นหนี้ปกติแล้ว');
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'ทำรายการไม่สำเร็จ', 'error');
+    }
+  };
+
   const deleteLoan = async () => {
     const ok = await confirmDialog({
       title: 'ลบยอดกู้นี้?',
@@ -296,7 +313,7 @@ export function LoanCard({
         <button
           type="button"
           onClick={() => setShowHistory((v) => !v)}
-          className="rounded-xl px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-primary dark:text-gray-400 dark:hover:bg-gray-800"
+          className="inline-flex min-h-10 items-center rounded-xl border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-primary dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
         >
           ประวัติการจ่าย ({payments.length})
         </button>
@@ -304,7 +321,7 @@ export function LoanCard({
           <button
             type="button"
             onClick={() => setShowSchedule((v) => !v)}
-            className="rounded-xl px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-primary dark:text-gray-400 dark:hover:bg-gray-800"
+            className="inline-flex min-h-10 items-center rounded-xl border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-primary dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
           >
             ตารางผ่อน
           </button>
@@ -313,7 +330,7 @@ export function LoanCard({
           <button
             type="button"
             onClick={onConvert}
-            className="rounded-xl px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-primary dark:text-gray-400 dark:hover:bg-gray-800"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-amber-300 px-3.5 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-400 dark:hover:bg-amber-500/10"
           >
             แปลงเป็นยอดตาย
           </button>
@@ -323,14 +340,14 @@ export function LoanCard({
       {showManage && (
         <div className="mt-2 flex flex-wrap gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
           {isOpen && onEdit && (
-            <ManageBtn onClick={onEdit} icon={<IconEdit className="size-3.5" />}>
+            <ManageBtn onClick={onEdit} icon={<IconEdit className="size-4" />}>
               {isInstallment ? 'แก้แผนผ่อน' : 'แก้เงื่อนไข'}
             </ManageBtn>
           )}
           {onAdjust && (
             <ManageBtn
               onClick={onAdjust}
-              icon={<IconAdjust className="size-3.5" />}
+              icon={<IconAdjust className="size-4" />}
             >
               ปรับยอด
             </ManageBtn>
@@ -338,20 +355,29 @@ export function LoanCard({
           {isOpen && onRefinance && (
             <ManageBtn
               onClick={onRefinance}
-              icon={<IconReopen className="size-3.5" />}
+              icon={<IconReopen className="size-4" />}
             >
               รียอด
             </ManageBtn>
           )}
           {isOpen && onClose && (
-            <ManageBtn onClick={onClose} icon={<IconLock className="size-3.5" />}>
+            <ManageBtn onClick={onClose} icon={<IconLock className="size-4" />}>
               ปิดยอด
+            </ManageBtn>
+          )}
+          {loan.status === LoanStatus.DEAD && (
+            <ManageBtn
+              onClick={backToNormal}
+              icon={<IconReopen className="size-4" />}
+              accent
+            >
+              นำกลับเป็นหนี้ปกติ
             </ManageBtn>
           )}
           {isOpen && onWriteOff && (
             <ManageBtn
               onClick={onWriteOff}
-              icon={<IconBan className="size-3.5" />}
+              icon={<IconBan className="size-4" />}
               danger
             >
               ตัดหนี้สูญ
@@ -360,20 +386,21 @@ export function LoanCard({
           {!isOpen && (
             <ManageBtn
               onClick={reopen}
-              icon={<IconReopen className="size-3.5" />}
+              icon={<IconReopen className="size-4" />}
+              accent
             >
               เปิดยอดคืน
             </ManageBtn>
           )}
           <ManageBtn
             onClick={() => setShowLog((v) => !v)}
-            icon={<IconHistory className="size-3.5" />}
+            icon={<IconHistory className="size-4" />}
           >
             ประวัติจัดการ
           </ManageBtn>
           <ManageBtn
             onClick={deleteLoan}
-            icon={<IconTrash className="size-3.5" />}
+            icon={<IconTrash className="size-4" />}
             danger
           >
             ลบยอด

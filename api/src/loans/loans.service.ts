@@ -283,6 +283,30 @@ export class LoansService {
   }
 
   /**
+   * ยอดต้น/ค้าง เมื่อนำยอดที่ "ตรึงยอด" (ยอดตาย/หนี้สูญที่เคยเป็นยอดตาย) กลับเป็นหนี้ปกติ
+   * ยอดคงเหลือจริงอยู่ที่ deadBalance แล้ว (ผ่อนช่วงตายไปเท่าไหร่ก็ถูกหักออกไปแล้ว)
+   * จึงยกยอดนั้นกลับมาเป็น "เงินต้นก้อนใหม่" และล้างค้างเก่าเป็น 0
+   * (ยอดค้างเดิมถูกรวมเข้า deadBalance ตอนแปลงไปแล้ว) — กันยอดเด้งกลับเป็นก้อนก่อนผ่อน
+   * ยอดปกติที่แค่ปิด/ตัดหนี้สูญ (deadDate = null) คงยอดต้น/ค้างเดิมไว้
+   */
+  revivedPrincipal(loan: Loan): {
+    outstandingPrincipal: number;
+    arrears: number;
+  } {
+    if (loan.deadDate == null)
+      return {
+        outstandingPrincipal: loan.outstandingPrincipal,
+        arrears: loan.arrears,
+      };
+    return {
+      outstandingPrincipal: round2(
+        loan.deadBalance ?? loan.outstandingPrincipal,
+      ),
+      arrears: 0,
+    };
+  }
+
+  /**
    * ตารางผ่อน (amortization schedule) ของยอดผ่อนงวด
    * แต่ละงวดเท่ากัน (งวดสุดท้ายซับเศษ), จัดสรรเงินที่ผ่อนมาแล้วแบบไล่งวด
    * เพื่อบอกงวดที่จ่ายแล้ว/ค้าง และยอดที่ถึงกำหนด ณ วันนี้ (รวมงวดค้าง)
@@ -1330,15 +1354,20 @@ export class LoansService {
     return loan;
   }
 
-  /** เปิดยอดคืน (ยกเลิกปิด/หนี้สูญ) — กลับมาเดินดอกจากวันนี้ */
-  async reopen(id: string): Promise<Loan> {
+  /**
+   * นำกลับเป็นหนี้ปกติ — ใช้ได้กับ:
+   *   - ปิดแล้ว/หนี้สูญ (CLOSED/BAD_DEBT): "เปิดยอดคืน"
+   *   - ยอดตาย (DEAD): "นำกลับเป็นหนี้ปกติ" (ลูกหนี้ที่เคยขาดติดต่อกลับมาชำระ)
+   * เดินดอกใหม่จากวันนี้เท่านั้น — ไม่คิดดอกย้อนช่วงที่หยุดไป (ประวัติจ่ายคงเดิม)
+   */
+  async reopen(id: string, reason?: string): Promise<Loan> {
     const loan = await this.findOne(id);
     if (
       loan.status === LoanStatus.ACTIVE ||
-      loan.status === LoanStatus.DEAD ||
       loan.status === LoanStatus.INSTALLMENT
     )
-      throw new BadRequestException('ยอดนี้เปิดอยู่แล้ว');
+      throw new BadRequestException('ยอดนี้เป็นหนี้ปกติอยู่แล้ว');
+    const wasDead = loan.status === LoanStatus.DEAD;
     // ผ่อนงวด: กลับสู่สถานะผ่อนต่อ ตรึงตารางผ่อนเดิมไว้
     if (this.isInstallment(loan)) {
       loan.status = LoanStatus.INSTALLMENT;
@@ -1350,12 +1379,17 @@ export class LoansService {
         debtorId: loan.debtorId,
         debtorName: loan.debtor?.name ?? null,
         message: 'เปิดยอดผ่อนงวดคืน',
+        reason: reason ?? null,
       });
       return loan;
     }
     const yesterday = addDays(todayStr(), -1);
+    // ยอดตาย/หนี้สูญที่ตรึงยอด: ยกยอดคงเหลือจริง (deadBalance) กลับมาเป็นเงินต้น กันยอดเด้งกลับ
+    const revived = this.revivedPrincipal(loan);
     loan.status = LoanStatus.ACTIVE;
     loan.closedAt = null;
+    loan.outstandingPrincipal = revived.outstandingPrincipal;
+    loan.arrears = revived.arrears;
     loan.deadDate = null;
     loan.deadBalance = null;
     loan.installmentAmount = null;
@@ -1363,6 +1397,8 @@ export class LoansService {
     await this.loans.update(id, {
       status: loan.status,
       closedAt: loan.closedAt,
+      outstandingPrincipal: loan.outstandingPrincipal,
+      arrears: loan.arrears,
       deadDate: loan.deadDate,
       deadBalance: loan.deadBalance,
       installmentAmount: loan.installmentAmount,
@@ -1373,7 +1409,8 @@ export class LoansService {
       loanId: id,
       debtorId: loan.debtorId,
       debtorName: loan.debtor?.name ?? null,
-      message: 'เปิดยอดคืน',
+      message: wasDead ? 'นำยอดตายกลับเป็นหนี้ปกติ' : 'เปิดยอดคืน',
+      reason: reason ?? null,
     });
     return loan;
   }
