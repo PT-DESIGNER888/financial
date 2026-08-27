@@ -21,7 +21,7 @@ import { PaymentModal } from '@/components/payment-modal';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht, cycleLabel, thaiDateLong, todayISO } from '@/lib/format';
 import { useToday } from '@/lib/hooks/useDashboard';
-import type { TodayDebtor, TodayItem } from '@/lib/types';
+import { PaymentType, type TodayDebtor, type TodayItem } from '@/lib/types';
 
 export default function TodayPage() {
   return (
@@ -173,6 +173,12 @@ function TodayView() {
           frozen={
             paying.item.status === 'DEAD' ||
             paying.item.status === 'INSTALLMENT'
+          }
+          defaultAmount={paying.item.remainingToday}
+          defaultType={
+            paying.item.duePrincipal > 0
+              ? PaymentType.BOTH
+              : PaymentType.INTEREST
           }
           quickAmounts={[
             { label: 'ยอดวันนี้', amount: paying.item.remainingToday },
@@ -379,21 +385,11 @@ function DebtorCard({
               )}
             </p>
           </div>
-          <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-gray-400">
-            {[
-              group.dueInterest > 0 && `ดอก ฿${baht(group.dueInterest)}`,
-              group.duePrincipal > 0 && `นัดคืน ฿${baht(group.duePrincipal)}`,
-              group.dueInstallment > 0 &&
-                `ผ่อน ฿${baht(group.dueInstallment)}`,
-            ]
-              .filter(Boolean)
-              .join(' · ') || 'ไม่มียอดถึงกำหนด'}
-            {!done && group.paidToday > 0 && (
-              <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                {' · '}ส่งมาแล้ว ฿{baht(group.paidToday)}
-              </span>
-            )}
-          </p>
+          {!done && group.paidToday > 0 && (
+            <p className="mt-1 text-xs leading-relaxed font-medium text-emerald-600 dark:text-emerald-400">
+              ส่งมาแล้ว ฿{baht(group.paidToday)}
+            </p>
+          )}
         </div>
 
         {group.arrears > 0 && (

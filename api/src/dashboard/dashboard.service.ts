@@ -19,7 +19,7 @@ export interface DayLoanItem {
   cycle: string;
   outstandingPrincipal: number;
   deadBalance: number | null;
-  /** ยอดค้างสะสม — แสดงเป็นข้อมูลประกอบ ไม่รวมในยอดที่ต้องเก็บวันนี้ */
+  /** ยอดค้างสะสมที่ยังไม่พับเข้ายอดวันนี้ — วันนัดคืนต้นพับเข้า dueTotal แล้วเป็น 0 */
   arrears: number;
   dueInterest: number;
   duePrincipal: number;
@@ -107,6 +107,19 @@ function hasFrozenBalance(
     loan.deadDate != null ||
     loan.installmentCount != null
   );
+}
+
+/**
+ * วันนัดคืนต้นของยอดปกติ: รวมดอกค้างเก่าเข้ายอดที่ต้องเก็บวันนี้
+ * ให้ขึ้นเป็นก้อนเดียวกับต้น (ลูกค้าเก็บต้น+ดอกค้างพร้อมกัน) — ยอดตาย/ผ่อนงวดไม่พับ
+ */
+export function foldedArrearsOnAppointment(input: {
+  duePrincipal: number;
+  frozen: boolean;
+  arrears: number;
+}): number {
+  if (input.frozen || !(input.duePrincipal > 0)) return 0;
+  return Math.max(0, input.arrears);
 }
 
 /**
@@ -260,6 +273,32 @@ export class DashboardService {
         .reduce((s, p) => s + p.amount, 0),
     );
 
+    const foldedArrears = foldedArrearsOnAppointment({
+      duePrincipal,
+      frozen,
+      arrears: loan.arrears,
+    });
+    const arrearsPaidToday = round2(
+      (loan.payments ?? [])
+        .filter((p) => p.paidDate === day && !p.onDeadLoan)
+        .reduce((s, p) => s + p.arrearsPaid, 0),
+    );
+    const remainingFoldedArrears = Math.max(
+      0,
+      round2(foldedArrears - arrearsPaidToday),
+    );
+    // ผ่อนงวด: งวดที่เลยกำหนดแล้วยังไม่จ่าย (แยกจากงวดของวันนี้)
+    // ยอดตาย: ต้น/ค้างเดิมถูกตรึงเข้า deadBalance แล้ว ไม่นับซ้ำ
+    // วันนัดคืนต้น: พับดอกค้างเข้ายอดวันนี้แล้ว ไม่โชว์ซ้ำที่แบนเนอร์ค้างเก่า
+    const bannerArrears =
+      loan.status === LoanStatus.INSTALLMENT
+        ? installmentArrears
+        : loan.status === LoanStatus.DEAD
+          ? 0
+          : foldedArrears > 0
+            ? 0
+            : loan.arrears;
+
     return {
       loanId: loan.id,
       contractNumber: loan.contractNumber,
@@ -267,20 +306,17 @@ export class DashboardService {
       cycle: loan.cycle,
       outstandingPrincipal: loan.outstandingPrincipal,
       deadBalance: loan.deadBalance,
-      // ผ่อนงวด: งวดที่เลยกำหนดแล้วยังไม่จ่าย (แยกจากงวดของวันนี้)
-      // ยอดตาย: ต้น/ค้างเดิมถูกตรึงเข้า deadBalance แล้ว ไม่นับซ้ำ
-      arrears:
-        loan.status === LoanStatus.INSTALLMENT
-          ? installmentArrears
-          : loan.status === LoanStatus.DEAD
-            ? 0
-            : loan.arrears,
+      arrears: bannerArrears,
       dueInterest,
       duePrincipal,
       dueInstallment,
-      dueTotal: round2(dueInterest + duePrincipal + dueInstallment),
+      dueTotal: round2(
+        dueInterest + duePrincipal + dueInstallment + foldedArrears,
+      ),
       paidToday,
-      remainingToday: round2(remainingInterest + remainingBalanceDue),
+      remainingToday: round2(
+        remainingInterest + remainingBalanceDue + remainingFoldedArrears,
+      ),
       principalDueDate: loan.principalDueDate,
       note: loan.note,
     };
@@ -337,7 +373,8 @@ export class DashboardService {
 
   /**
    * รายการเก็บของวันที่เลือก จัดกลุ่มตามลูกหนี้
-   * - ยอดค้างสะสมไม่รวมใน "ต้องเก็บวันนี้" (ดูแยกที่หน้ายอดค้าง) แต่โชว์เป็นข้อมูลประกอบ
+   * - ยอดค้างสะสมโดยทั่วไปไม่รวมใน "ต้องเก็บวันนี้" (ดูแยกที่หน้ายอดค้าง)
+   *   ยกเว้นวันนัดคืนต้นของยอดปกติ — พับดอกค้างเข้ายอดวันนี้ให้เก็บเป็นก้อนเดียวกับต้น
    * - เลือกวันล่วงหน้า/ย้อนหลังได้ เพื่อดูว่าวันจันทร์/อังคาร… มีใครต้องส่งบ้าง
    */
   async today(date?: string) {
