@@ -18,10 +18,11 @@ import {
 } from '@/components/icons';
 import { CombinedReceiveModal } from '@/components/combined-receive-modal';
 import { PaymentModal } from '@/components/payment-modal';
+import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht, cycleLabel, thaiDateLong, todayISO } from '@/lib/format';
 import { useToday } from '@/lib/hooks/useDashboard';
-import type { TodayDebtor, TodayItem } from '@/lib/types';
+import { PaymentType, type TodayDebtor, type TodayItem } from '@/lib/types';
 
 export default function TodayPage() {
   return (
@@ -39,17 +40,10 @@ interface PayTarget {
 
 function TodayView() {
   const [date, setDate] = useState(todayISO());
-  const { data, error, isFetching } = useToday(date);
+  const { data, error, isFetching, refetch } = useToday(date);
   const [paying, setPaying] = useState<PayTarget | null>(null);
   const [combining, setCombining] = useState<TodayDebtor | null>(null);
   const [q, setQ] = useState('');
-
-  if (error)
-    return (
-      <p className="py-10 text-center font-medium text-red-600">
-        {error.message}
-      </p>
-    );
 
   const totals = data?.totals;
   const match = (g: TodayDebtor) =>
@@ -61,9 +55,7 @@ function TodayView() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold text-slate-900 md:text-[1.75rem] dark:text-white">
-          เก็บวันนี้
-        </h1>
+        <h1 className="sr-only">เก็บวันนี้</h1>
         <p className="text-sm leading-relaxed text-slate-500 dark:text-gray-400">
           {thaiDateLong(date)}
           {data && !data.isToday && ' · ดูล่วงหน้า/ย้อนหลัง'} — ยอดค้างสะสมดูแยกที่หน้า
@@ -75,7 +67,9 @@ function TodayView() {
 
       <DayStrip value={date} onChange={setDate} />
 
-      {!data ? (
+      {error ? (
+        <PageError message={error.message} onRetry={() => void refetch()} />
+      ) : !data ? (
         <PageSkeleton />
       ) : (
         <>
@@ -173,6 +167,12 @@ function TodayView() {
           frozen={
             paying.item.status === 'DEAD' ||
             paying.item.status === 'INSTALLMENT'
+          }
+          defaultAmount={paying.item.remainingToday}
+          defaultType={
+            paying.item.duePrincipal > 0
+              ? PaymentType.BOTH
+              : PaymentType.INTEREST
           }
           quickAmounts={[
             { label: 'ยอดวันนี้', amount: paying.item.remainingToday },
@@ -379,21 +379,11 @@ function DebtorCard({
               )}
             </p>
           </div>
-          <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-gray-400">
-            {[
-              group.dueInterest > 0 && `ดอก ฿${baht(group.dueInterest)}`,
-              group.duePrincipal > 0 && `นัดคืน ฿${baht(group.duePrincipal)}`,
-              group.dueInstallment > 0 &&
-                `ผ่อน ฿${baht(group.dueInstallment)}`,
-            ]
-              .filter(Boolean)
-              .join(' · ') || 'ไม่มียอดถึงกำหนด'}
-            {!done && group.paidToday > 0 && (
-              <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                {' · '}ส่งมาแล้ว ฿{baht(group.paidToday)}
-              </span>
-            )}
-          </p>
+          {!done && group.paidToday > 0 && (
+            <p className="mt-1 text-xs leading-relaxed font-medium text-emerald-600 dark:text-emerald-400">
+              ส่งมาแล้ว ฿{baht(group.paidToday)}
+            </p>
+          )}
         </div>
 
         {group.arrears > 0 && (
@@ -526,7 +516,7 @@ function LoanRow({ item, onPay }: { item: TodayItem; onPay: () => void }) {
           aria-label={`รับเงิน ${cycleLabel[item.cycle]}`}
         >
           <IconBanknote className="size-4 stroke-[1.5]" />
-          รับ
+          รับเงิน
         </Button>
       </div>
     </li>

@@ -22,7 +22,7 @@ export function ConfirmHost() {
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-sm space-y-2 rounded-t-lg border border-gray-200 bg-white p-5 sm:rounded-lg dark:border-gray-800 dark:bg-gray-900"
       >
-        <p className="font-semibold text-gray-900 dark:text-white">
+        <p className="text-lg font-semibold text-gray-900 dark:text-white">
           {open.title}
         </p>
         {open.detail && (

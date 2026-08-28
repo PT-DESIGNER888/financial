@@ -234,7 +234,7 @@ export interface TodayItem {
   cycle: LoanCycle;
   outstandingPrincipal: number;
   deadBalance: number | null;
-  /** ยอดค้างสะสม — ข้อมูลประกอบ ไม่รวมใน dueTotal */
+  /** ยอดค้างสะสม — วันนัดคืนต้นพับเข้า dueTotal แล้ว ช่องนี้เป็น 0 */
   arrears: number;
   dueInterest: number;
   /** นัดคืนต้นที่ถึงกำหนดวันนี้ */

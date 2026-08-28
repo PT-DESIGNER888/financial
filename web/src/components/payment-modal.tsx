@@ -22,6 +22,10 @@ interface Props {
   frozenLabel?: string;
   /** ปุ่มยอดด่วน เช่น ยอดที่ต้องเก็บวันนี้ */
   quickAmounts?: { label: string; amount: number }[];
+  /** กรอกยอดเริ่มต้น (เช่น ยอดวันนี้จากหน้าเก็บ) */
+  defaultAmount?: number;
+  /** ประเภทการรับเงินเริ่มต้น — วันนัดคืนต้นใช้ BOTH */
+  defaultType?: PaymentType;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -43,13 +47,19 @@ export function PaymentModal({
   frozen,
   frozenLabel = 'ยอดผ่อน',
   quickAmounts,
+  defaultAmount,
+  defaultType,
   onClose,
   onSaved,
 }: Props) {
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(
+    defaultAmount != null && defaultAmount > 0 ? String(defaultAmount) : '',
+  );
   const [mode, setMode] = useState<'normal' | 'prepay'>('normal');
   const [prepayCount, setPrepayCount] = useState(2);
-  const [paymentType, setPaymentType] = useState<PaymentType>(PaymentType.INTEREST);
+  const [paymentType, setPaymentType] = useState<PaymentType>(
+    defaultType ?? PaymentType.INTEREST,
+  );
   const [interestDueStr, setInterestDueStr] = useState(''); // '' = ใช้ที่ระบบคำนวณ
   const [arrearsPaid, setArrearsPaid] = useState(0);
   const [interestPaid, setInterestPaid] = useState(0);

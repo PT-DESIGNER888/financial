@@ -166,10 +166,11 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const buttonVariant: Record<ButtonVariant, string> = {
   primary:
-    'bg-primary text-white hover:brightness-95 disabled:opacity-50',
+    'bg-primary text-white shadow-sm hover:brightness-95 active:brightness-90 disabled:pointer-events-none disabled:opacity-50',
   secondary:
-    'border border-[#d7dce3] bg-white text-[#1a222c] hover:bg-[#f4f5f7] dark:border-gray-700 dark:bg-transparent dark:text-gray-300 dark:hover:bg-gray-800',
-  danger: 'bg-[#b33b3b] text-white hover:brightness-95 disabled:opacity-50',
+    'border border-[#c9d0da] bg-white text-[#1a222c] hover:bg-[#f4f5f7] active:bg-[#eceef1] disabled:pointer-events-none disabled:opacity-50 dark:border-gray-700 dark:bg-transparent dark:text-gray-300 dark:hover:bg-gray-800',
+  danger:
+    'bg-[#b33b3b] text-white shadow-sm hover:brightness-95 active:brightness-90 disabled:pointer-events-none disabled:opacity-50',
 };
 
 const buttonSize: Record<ButtonSize, string> = {
@@ -191,7 +192,7 @@ export function buttonClassName({
   block,
   className,
 }: ButtonClassNameOptions = {}) {
-  return `inline-flex items-center justify-center gap-1.5 rounded-xl font-semibold transition-colors ${buttonVariant[variant]} ${buttonSize[size]} ${block ? 'w-full' : ''} ${className ?? ''}`;
+  return `inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-[background-color,color,box-shadow,filter] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900 ${buttonVariant[variant]} ${buttonSize[size]} ${block ? 'w-full' : ''} ${className ?? ''}`;
 }
 
 /** ปุ่มกลางของทั้งแอป — variant primary/secondary/danger, size sm/md */

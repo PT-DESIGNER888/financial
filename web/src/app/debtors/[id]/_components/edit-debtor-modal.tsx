@@ -6,6 +6,7 @@ import { IconPlus } from '@/components/icons';
 import { useUpdateDebtor } from '@/lib/hooks/useDebtors';
 import type { Debtor, EmergencyContact } from '@/lib/types';
 import { resolveContacts } from './helpers';
+import { AttachmentsSection } from './attachments';
 import { ModalShell } from './ui';
 
 export function EditDebtorModal({
@@ -66,31 +67,44 @@ export function EditDebtorModal({
   };
 
   return (
-    <ModalShell title="แก้ข้อมูลลูกหนี้" onClose={onClose}>
-      <FormInput
-        label="ชื่อ *"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />
-      <FormInput
-        label="เบอร์โทร"
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-      />
-      <FormInput
-        label="ลิงก์ Facebook"
-        value={facebookUrl}
-        onChange={(e) => setFacebookUrl(e.target.value)}
-        placeholder="https://facebook.com/…"
-      />
-      <FormInput
-        label="LINE ID หรือลิงก์"
-        value={lineId}
-        onChange={(e) => setLineId(e.target.value)}
-        placeholder="เช่น mylineid หรือ https://line.me/ti/p/…"
-      />
+    <ModalShell title="แก้ข้อมูลลูกหนี้" onClose={onClose} size="xl">
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+            ข้อมูลติดต่อ
+          </h3>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-gray-400">
+            ข้อมูลหลักสำหรับติดต่อและค้นหาลูกหนี้
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormInput
+            label="ชื่อ *"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <FormInput
+            label="เบอร์โทร"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+          <FormInput
+            label="ลิงก์ Facebook"
+            value={facebookUrl}
+            onChange={(e) => setFacebookUrl(e.target.value)}
+            placeholder="https://facebook.com/…"
+          />
+          <FormInput
+            label="LINE ID หรือลิงก์"
+            value={lineId}
+            onChange={(e) => setLineId(e.target.value)}
+            placeholder="เช่น mylineid หรือ https://line.me/ti/p/…"
+          />
+        </div>
+      </section>
 
-      <div className="space-y-3">
+      <section className="border-t border-slate-200 pt-5 dark:border-gray-800">
+        <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
             ผู้ติดต่อคนสนิท
@@ -130,7 +144,7 @@ export function EditDebtorModal({
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               <FormInput
                 label="ชื่อ"
                 value={c.name}
@@ -154,27 +168,44 @@ export function EditDebtorModal({
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      </section>
 
-      <label className="flex items-center gap-2 rounded-lg bg-red-50 p-2.5 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
-        <input
-          type="checkbox"
-          checked={blacklisted}
-          onChange={(e) => setBlacklisted(e.target.checked)}
-        />
-        ขึ้นบัญชีดำ (เตือนก่อนปล่อยกู้เพิ่ม)
-      </label>
-      <FormInput
-        label="ประวัติเครดิต / พฤติกรรมการจ่าย"
-        value={creditNote}
-        onChange={(e) => setCreditNote(e.target.value)}
-        placeholder="เช่น จ่ายตรงเวลา, ชอบเลื่อน"
-      />
-      <FormInput
-        label="หมายเหตุลูกหนี้"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-      />
+      <section className="space-y-4 border-t border-slate-200 pt-5 dark:border-gray-800">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+          ข้อมูลประกอบ
+        </h3>
+        <label className="flex items-center gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
+          <input
+            type="checkbox"
+            checked={blacklisted}
+            onChange={(e) => setBlacklisted(e.target.checked)}
+          />
+          ขึ้นบัญชีดำ (เตือนก่อนปล่อยกู้เพิ่ม)
+        </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormInput
+            label="ประวัติเครดิต / พฤติกรรมการจ่าย"
+            value={creditNote}
+            onChange={(e) => setCreditNote(e.target.value)}
+            placeholder="เช่น จ่ายตรงเวลา, ชอบเลื่อน"
+          />
+          <FormInput
+            label="หมายเหตุลูกหนี้"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </div>
+      </section>
+      <details className="border-t border-slate-200 pt-5 dark:border-gray-800">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-900 dark:text-white">
+          รูปและเอกสาร
+          <span className="ml-2 text-xs font-normal text-slate-500 dark:text-gray-400">
+            เพิ่มหรือลบรูป
+          </span>
+        </summary>
+        <AttachmentsSection debtorId={debtor.id} editable />
+      </details>
       {error && <p className="text-sm text-red-500">{error}</p>}
       <ModalButtons onClose={onClose} onSave={save} saving={update.isPending} />
     </ModalShell>

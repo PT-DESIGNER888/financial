@@ -16,7 +16,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             staleTime: 30_000,
             // ใช้ทั้งมือถือหน้างานและคอมที่บ้าน — กลับมาที่แอปแล้วข้อมูลต้องสด
             refetchOnWindowFocus: true,
-            retry: 1,
+            retry: 2,
           },
         },
       }),

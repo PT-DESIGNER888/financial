@@ -3,6 +3,7 @@ import type { Loan } from '../entities/loan.entity';
 import {
   appointmentDue,
   arrearsBucket,
+  foldedArrearsOnAppointment,
   remainingBalanceOnDay,
   splitInstallmentDue,
 } from './dashboard.service';
@@ -193,6 +194,38 @@ describe('appointmentDue — นัดคืนต้นที่ถึงกำ
       principalDueAmount: 500,
     });
     expect(appointmentDue(l, '2026-07-25')).toBe(0);
+  });
+});
+
+describe('foldedArrearsOnAppointment — พับดอกค้างเข้าวันนัดคืนต้น', () => {
+  it('ยอดปกติมีนัดคืนต้น + ดอกค้าง → รวมดอกค้างเข้ายอดวันนี้', () => {
+    expect(
+      foldedArrearsOnAppointment({
+        duePrincipal: 3_000,
+        frozen: false,
+        arrears: 600,
+      }),
+    ).toBe(600);
+  });
+
+  it('ไม่มีนัดคืนต้นวันนี้ → ไม่ดึงดอกค้างมาพองยอดเก็บวันนี้', () => {
+    expect(
+      foldedArrearsOnAppointment({
+        duePrincipal: 0,
+        frozen: false,
+        arrears: 600,
+      }),
+    ).toBe(0);
+  });
+
+  it('ยอดตาย/ผ่อนงวด → ไม่พับ (ยอดถูกตรึงก้อนเดียวอยู่แล้ว)', () => {
+    expect(
+      foldedArrearsOnAppointment({
+        duePrincipal: 3_000,
+        frozen: true,
+        arrears: 600,
+      }),
+    ).toBe(0);
   });
 });
 

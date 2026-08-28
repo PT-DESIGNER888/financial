@@ -13,6 +13,7 @@ import {
   IconTrash,
 } from '@/components/icons';
 import { PaymentModal } from '@/components/payment-modal';
+import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
 import { confirmDialog } from '@/lib/confirm-store';
 import { useDebtor, useDeleteDebtor } from '@/lib/hooks/useDebtors';
@@ -43,7 +44,7 @@ export default function DebtorPage({
 }
 
 function DebtorView({ id }: { id: string }) {
-  const { data: debtor, error } = useDebtor(id);
+  const { data: debtor, error, refetch } = useDebtor(id);
   const removeDebtor = useDeleteDebtor();
   const [editingDebtor, setEditingDebtor] = useState(false);
   const [paying, setPaying] = useState<Loan | null>(null);
@@ -70,7 +71,12 @@ function DebtorView({ id }: { id: string }) {
   };
 
   if (error)
-    return <p className="py-10 text-center text-red-600">{error.message}</p>;
+    return (
+      <div className="space-y-4">
+        <BackButton href="/debtors" label="ลูกหนี้" />
+        <PageError message={error.message} onRetry={() => void refetch()} />
+      </div>
+    );
   if (!debtor) return <PageSkeleton />;
 
   const loans = debtor.loans ?? [];
@@ -126,6 +132,15 @@ function DebtorView({ id }: { id: string }) {
               )}
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={deleteDebtor}
+                title="ลบลูกหนี้รายนี้"
+                aria-label="ลบลูกหนี้รายนี้"
+                className="inline-flex size-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:border-gray-700 dark:text-red-400 dark:hover:bg-red-500/10"
+              >
+                <IconTrash className="size-5" />
+              </button>
               <button
                 type="button"
                 onClick={() => setEditingDebtor(true)}
@@ -232,10 +247,10 @@ function DebtorView({ id }: { id: string }) {
               </div>
             );
           })()}
+          <AttachmentsSection debtorId={id} />
         </section>
       </div>
 
-      {/* <DebtorSummaryStrip debtorId={id} /> */}
       <DebtorSummaryStrip debtorId={id} />
 
       {open.map((loan) => (
@@ -281,16 +296,6 @@ function DebtorView({ id }: { id: string }) {
           </div>
         </details>
       )}
-
-      <AttachmentsSection debtorId={id} />
-
-      <button
-        onClick={deleteDebtor}
-        className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-600 hover:underline"
-      >
-        <IconTrash className="size-4" />
-        ลบลูกหนี้รายนี้
-      </button>
 
       {editingDebtor && (
         <EditDebtorModal

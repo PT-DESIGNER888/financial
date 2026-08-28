@@ -23,9 +23,9 @@ function itemDue(item: TodayItem): number {
 }
 
 /**
- * จัดสรรเงินของยอดกู้หนึ่งก้อนตามชนิด — ไม่แตะยอดค้างเก่า (หน้าเก็บวันนี้เก็บเฉพาะของวัน)
+ * จัดสรรเงินของยอดกู้หนึ่งก้อนตามชนิด — ให้ API จัดสรรดอก → ค้างเก่า → ต้น เอง
  *  - ยอดตาย/ผ่อนงวด: หักยอดผ่อน (ก้อนเดียว)
- *  - ยอดปกติมีนัดคืนต้นวันนี้: ดอก + ตัดต้นตามนัด
+ *  - ยอดปกติมีนัดคืนต้นวันนี้: ดอก+ค้าง+ตัดต้นเป็นก้อนเดียว (BOTH)
  *  - ยอดปกติทั่วไป: ชำระดอกล้วน
  */
 function buildPayment(item: TodayItem, paidDate: string): RecordPaymentInput {
@@ -35,15 +35,11 @@ function buildPayment(item: TodayItem, paidDate: string): RecordPaymentInput {
     return { loanId: item.loanId, amount, paidDate };
   }
   if (item.duePrincipal > 0) {
-    const principalPaid = Math.min(item.duePrincipal, amount);
     return {
       loanId: item.loanId,
       amount,
       paidDate,
       paymentType: PaymentType.BOTH,
-      interestPaid: Math.max(0, Math.round((amount - principalPaid) * 100) / 100),
-      arrearsPaid: 0,
-      principalPaid,
     };
   }
   return {
@@ -163,19 +159,11 @@ export function CombinedReceiveModal({ group, paidDate, onClose, onSaved }: Prop
                       {it.status === 'INSTALLMENT' && ' · ผ่อนงวด'}
                     </span>
                     <span className="mt-0.5 block text-xs text-slate-500 dark:text-gray-400">
-                      {[
-                        it.dueInterest > 0 && `ดอก ฿${baht(it.dueInterest)}`,
-                        it.duePrincipal > 0 &&
-                          `นัดคืน ฿${baht(it.duePrincipal)}`,
-                        it.dueInstallment > 0 &&
-                          `ผ่อน ฿${baht(it.dueInstallment)}`,
-                        frozen &&
-                          it.dueInstallment === 0 &&
-                          it.duePrincipal === 0 &&
-                          'ผ่อนยอด',
-                      ]
-                        .filter(Boolean)
-                        .join(' · ') || 'ยอดวันนี้'}
+                      {it.duePrincipal > 0
+                        ? 'นัดคืนวันนี้'
+                        : frozen
+                          ? 'ผ่อนยอด'
+                          : 'ยอดวันนี้'}
                     </span>
                   </span>
                   <span

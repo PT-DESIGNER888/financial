@@ -5,6 +5,7 @@ import { AuthGate } from '@/components/auth-gate';
 import { BackButton } from '@/components/back-button';
 import { Button } from '@/components/form';
 import { IconCopy, IconPrinter } from '@/components/icons';
+import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
 import {
   baht,
@@ -18,36 +19,17 @@ import { toast } from '@/lib/toast-store';
 import type { BillData, TodayItem } from '@/lib/types';
 
 /**
- * แยกยอดของสัญญาหนึ่งเป็นรายการตาม "สิ่งที่ถึงกำหนดจริง" ไม่ใช่ตามชนิดยอด
- * วันที่มีนัดคืนต้นแต่ยังไม่ครบรอบดอก เคยขึ้นเป็น "ดอก<รอบ>" ทับยอดเงินต้น
- * ทำให้อ่านแล้วเหมือนดอกหายไป — ต้องแยกบรรทัดให้เห็นว่าเงินก้อนไหนคืออะไร
+ * ยอดของสัญญาหนึ่งเป็นตัวเลขเดียวตามที่ต้องส่งวันนี้
+ * (ดอก + นัดคืนต้น + งวดผ่อน รวมกันแล้ว) — ไม่แยกบรรทัดให้อ่านยาก
  */
 function dueLines(item: TodayItem): { label: string; amount: number }[] {
-  const lines: { label: string; amount: number }[] = [];
-  if (item.dueInterest > 0)
-    lines.push({
-      label: `ดอก${cycleLabel[item.cycle]}`,
-      amount: item.dueInterest,
-    });
-  if (item.dueInstallment > 0)
-    lines.push({
-      label: item.status === 'DEAD' ? 'ผ่อนยอดตาย' : 'ผ่อนงวด',
-      amount: item.dueInstallment,
-    });
-  if (item.duePrincipal > 0)
-    lines.push({ label: 'นัดคืนต้น', amount: item.duePrincipal });
-  // ไม่มีอะไรถึงกำหนด (ติดมาเพราะจ่ายล่วงหน้าไว้) — คงชื่อตามชนิดยอดไว้
-  if (lines.length === 0)
-    lines.push({ label: loanKindLabel(item), amount: item.dueTotal });
-  return lines;
-}
-
-function loanKindLabel(item: Pick<TodayItem, 'status' | 'cycle'>): string {
-  return item.status === 'DEAD'
-    ? 'ผ่อนยอดตาย'
-    : item.status === 'INSTALLMENT'
-      ? 'ผ่อนงวด'
-      : `ดอก${cycleLabel[item.cycle]}`;
+  if (!(item.dueTotal > 0)) return [];
+  let label: string;
+  if (item.status === 'DEAD') label = 'ผ่อนยอดตาย';
+  else if (item.status === 'INSTALLMENT') label = 'ผ่อนงวด';
+  else if (item.duePrincipal > 0) label = 'นัดคืนต้น';
+  else label = `ดอก${cycleLabel[item.cycle]}`;
+  return [{ label, amount: item.dueTotal }];
 }
 
 export default function BillPage({
@@ -68,14 +50,15 @@ export default function BillPage({
 
 /** บิลแจ้งยอด — จัดหน้าให้แคปหน้าจอส่งให้ลูกหนี้ได้เลย */
 function BillView({ debtorId, date }: { debtorId: string; date: string }) {
-  const { data, error } = useBill(debtorId, date);
+  const { data, error, refetch } = useBill(debtorId, date);
   const [copying, setCopying] = useState(false);
 
   if (error)
     return (
-      <p className="py-10 text-center font-medium text-red-600">
-        {error.message}
-      </p>
+      <div className="space-y-4">
+        <BackButton href="/" label="เก็บวันนี้" />
+        <PageError message={error.message} onRetry={() => void refetch()} />
+      </div>
     );
   if (!data) return <PageSkeleton />;
 

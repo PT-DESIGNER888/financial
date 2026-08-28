@@ -346,8 +346,8 @@ export class LoansController {
   }
 
   @Post(':id/reopen')
-  reopen(@Param('id') id: string) {
-    return this.loans.reopen(id);
+  reopen(@Param('id') id: string, @Body() dto: ReasonDto) {
+    return this.loans.reopen(id, dto.reason);
   }
 
   @Delete(':id')
