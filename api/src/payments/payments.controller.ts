@@ -89,10 +89,7 @@ export class PaymentsController {
 
   /** พรีวิวชำระดอกล่วงหน้า N รอบ */
   @Get('prepay-quote')
-  prepayQuote(
-    @Query('loanId') loanId: string,
-    @Query('count') count?: string,
-  ) {
+  prepayQuote(@Query('loanId') loanId: string, @Query('count') count?: string) {
     return this.payments.prepayQuote(loanId, parseInt(count ?? '1', 10) || 1);
   }
 

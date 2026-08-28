@@ -52,8 +52,7 @@ export function allocatePayment(input: {
     paymentType !== PaymentType.ARREARS;
   const canArrears = paymentType !== PaymentType.PRINCIPAL;
   const canPrincipal =
-    paymentType !== PaymentType.INTEREST &&
-    paymentType !== PaymentType.ARREARS;
+    paymentType !== PaymentType.INTEREST && paymentType !== PaymentType.ARREARS;
 
   let rest = amount;
   const interestPaid = canInterest
@@ -314,7 +313,7 @@ export class PaymentsService {
     if (loan.status !== LoanStatus.ACTIVE || loan.cycle === LoanCycle.MONTHLY)
       throw new BadRequestException('ชำระล่วงหน้าได้เฉพาะยอดดอกลอย/คงที่');
     const n = Math.max(1, Math.floor(count));
-    const step = cycleStep[loan.cycle as Exclude<LoanCycle, 'MONTHLY'>];
+    const step = cycleStep[loan.cycle];
     const cur = this.loansService.currentCycleInfo(loan);
     const startDue = cur?.dueDate ?? this.nextDueDate(loan);
     if (!startDue) throw new BadRequestException('ไม่พบรอบดอกที่จะชำระ');
