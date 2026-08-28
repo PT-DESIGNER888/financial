@@ -18,6 +18,7 @@ import {
 } from '@/components/icons';
 import { CombinedReceiveModal } from '@/components/combined-receive-modal';
 import { PaymentModal } from '@/components/payment-modal';
+import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht, cycleLabel, thaiDateLong, todayISO } from '@/lib/format';
 import { useToday } from '@/lib/hooks/useDashboard';
@@ -39,17 +40,10 @@ interface PayTarget {
 
 function TodayView() {
   const [date, setDate] = useState(todayISO());
-  const { data, error, isFetching } = useToday(date);
+  const { data, error, isFetching, refetch } = useToday(date);
   const [paying, setPaying] = useState<PayTarget | null>(null);
   const [combining, setCombining] = useState<TodayDebtor | null>(null);
   const [q, setQ] = useState('');
-
-  if (error)
-    return (
-      <p className="py-10 text-center font-medium text-red-600">
-        {error.message}
-      </p>
-    );
 
   const totals = data?.totals;
   const match = (g: TodayDebtor) =>
@@ -61,9 +55,7 @@ function TodayView() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold text-slate-900 md:text-[1.75rem] dark:text-white">
-          เก็บวันนี้
-        </h1>
+        <h1 className="sr-only">เก็บวันนี้</h1>
         <p className="text-sm leading-relaxed text-slate-500 dark:text-gray-400">
           {thaiDateLong(date)}
           {data && !data.isToday && ' · ดูล่วงหน้า/ย้อนหลัง'} — ยอดค้างสะสมดูแยกที่หน้า
@@ -75,7 +67,9 @@ function TodayView() {
 
       <DayStrip value={date} onChange={setDate} />
 
-      {!data ? (
+      {error ? (
+        <PageError message={error.message} onRetry={() => void refetch()} />
+      ) : !data ? (
         <PageSkeleton />
       ) : (
         <>
@@ -522,7 +516,7 @@ function LoanRow({ item, onPay }: { item: TodayItem; onPay: () => void }) {
           aria-label={`รับเงิน ${cycleLabel[item.cycle]}`}
         >
           <IconBanknote className="size-4 stroke-[1.5]" />
-          รับ
+          รับเงิน
         </Button>
       </div>
     </li>

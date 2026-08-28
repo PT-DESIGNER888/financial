@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import {
   IconChart,
   IconCoins,
   IconDoc,
   IconList,
   IconLogout,
+  IconMore,
   IconMoon,
   IconOverdue,
   IconSettings,
@@ -87,6 +88,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { accessToken, clear } = useAuthStore();
   const { dark, toggle } = useTheme();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   if (pathname === '/login')
     return (
@@ -100,6 +102,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
     t.href === '/' ? pathname === '/' : pathname.startsWith(t.href),
   );
   const settingsActive = pathname.startsWith('/settings');
+  const mobileItems = flat.slice(0, 4);
+  const mobileMoreActive =
+    settingsActive || !mobileItems.some((item) => item.href === active?.href);
 
   return (
     <div className="flex min-h-screen">
@@ -186,12 +191,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="hidden items-center gap-1.5 md:flex">
               <Link
                 href="/settings"
                 title="ตั้งค่า"
                 aria-label="ตั้งค่า"
-                className="flex size-11 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 md:hidden dark:text-gray-300 dark:hover:bg-gray-800"
+                className="flex size-11 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 <IconSettings className="size-6" />
               </Link>
@@ -236,17 +241,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
       {/* Bottom nav — mobile */}
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[#d7dce3] bg-white pb-[env(safe-area-inset-bottom)] md:hidden print:hidden dark:border-gray-800 dark:bg-gray-900">
         <div className="flex">
-          {flat.map((t) => {
+          {mobileItems.map((t) => {
             const isActive = active?.href === t.href;
             return (
               <Link
                 key={t.href}
                 href={t.href}
-                className={`flex min-h-16 flex-1 flex-col items-center justify-center gap-1 px-0.5 pt-2.5 pb-2 text-[13px] transition-colors ${
+                className={`flex min-h-16 flex-1 flex-col items-center justify-center gap-1 px-0 pt-2.5 pb-2 text-[11px] transition-colors ${
                   isActive
                     ? 'font-semibold text-primary'
                     : 'font-medium text-slate-400 dark:text-gray-500'
                 }`}
+                aria-current={isActive ? 'page' : undefined}
               >
                 <span
                   className={`flex size-9 items-center justify-center rounded-xl ${
@@ -261,8 +267,116 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-menu"
+            className={`flex min-h-16 flex-1 flex-col items-center justify-center gap-1 px-0 pt-2.5 pb-2 text-[11px] transition-colors ${
+              mobileMoreActive
+                ? 'font-semibold text-primary'
+                : 'font-medium text-slate-500 dark:text-gray-400'
+            }`}
+          >
+            <span
+              className={`flex size-9 items-center justify-center rounded-xl ${
+                mobileMoreActive ? 'bg-primary/10' : ''
+              }`}
+            >
+              <IconMore className="size-6" />
+            </span>
+            <span className="leading-none">เพิ่มเติม</span>
+          </button>
         </div>
       </nav>
+
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 z-30 flex items-end bg-slate-950/40 p-3 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <section
+            id="mobile-menu"
+            role="dialog"
+            aria-modal="true"
+            aria-label="เมนูเพิ่มเติม"
+            className="w-full rounded-2xl bg-white p-4 shadow-xl dark:bg-gray-900"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                  เมนูเพิ่มเติม
+                </h2>
+                <p className="text-sm text-slate-500 dark:text-gray-400">
+                  เลือกรายการที่ต้องการใช้งาน
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="min-h-11 rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                ปิด
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {flat.slice(4).map((item) => {
+                const isActive = active?.href === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex min-h-14 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors ${
+                      isActive
+                        ? 'bg-primary/10 text-primary'
+                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <item.Icon className="size-5 shrink-0" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+              <Link
+                href="/settings"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex min-h-14 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors ${
+                  settingsActive
+                    ? 'bg-primary/10 text-primary'
+                    : 'bg-slate-50 text-slate-700 hover:bg-slate-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                <IconSettings className="size-5 shrink-0" />
+                ตั้งค่า
+              </Link>
+              <button
+                type="button"
+                onClick={toggle}
+                className="flex min-h-14 items-center gap-2 rounded-xl bg-slate-50 px-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                {dark ? <IconSun className="size-5" /> : <IconMoon className="size-5" />}
+                {dark ? 'ใช้โหมดสว่าง' : 'ใช้โหมดมืด'}
+              </button>
+              {accessToken && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clear();
+                    setMobileMenuOpen(false);
+                    router.push('/login');
+                  }}
+                  className="col-span-2 flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  <IconLogout className="size-5" />
+                  ออกจากระบบ
+                </button>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

@@ -217,17 +217,17 @@ export function LoanCard({
             </p>
           )}
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
+        <div className="flex w-full shrink-0 flex-wrap gap-2 sm:w-auto">
           <button
             type="button"
             onClick={() => setShowManage((v) => !v)}
-            className="inline-flex min-h-12 items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2.5 text-[15px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+            className="inline-flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2.5 text-[15px] font-semibold text-slate-700 hover:bg-slate-50 sm:flex-none dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
           >
             <IconSettings className="size-5" />
-            จัดการ
+            จัดการยอด
           </button>
           {onPay && (isOpen || isBadDebt) && (
-            <Button onClick={onPay}>
+            <Button onClick={onPay} className="flex-1 sm:flex-none">
               <IconReceive className="size-5" />
               {isBadDebt ? 'รับเงินคืน' : 'รับเงิน'}
             </Button>

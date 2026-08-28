@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { AuthGate } from '@/components/auth-gate';
 import { Button, FormInput, TextInput } from '@/components/form';
 import { IconPlus } from '@/components/icons';
+import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht } from '@/lib/format';
 import { uploadForm } from '@/lib/api';
@@ -42,7 +43,7 @@ const emptyContact = (): EmergencyContact => ({
 
 function DebtorsView() {
   const router = useRouter();
-  const { data: debtors, error } = useDebtors();
+  const { data: debtors, error, refetch } = useDebtors();
   const createDebtor = useCreateDebtor();
   const [adding, setAdding] = useState(false);
   const [q, setQ] = useState('');
@@ -108,21 +109,25 @@ function DebtorsView() {
 
   if (error)
     return (
-      <p className="py-10 text-center text-red-600">{error.message}</p>
+      <div className="space-y-6">
+        <h1 className="sr-only">ลูกหนี้</h1>
+        <PageError message={error.message} onRetry={() => void refetch()} />
+      </div>
     );
   if (!debtors) return <PageSkeleton />;
 
-  const filtered = debtors.filter((d) =>
-    d.name.toLowerCase().includes(q.toLowerCase()),
+  const needle = q.trim().toLowerCase();
+  const filtered = debtors.filter(
+    (d) =>
+      d.name.toLowerCase().includes(needle) ||
+      (d.phone ?? '').includes(q.trim()),
   );
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-slate-900 md:text-[1.75rem] dark:text-white">
-            ลูกหนี้
-          </h1>
+          <h1 className="sr-only">ลูกหนี้</h1>
           <p className="text-sm text-slate-500 dark:text-gray-400">
             ทั้งหมด {debtors.length} คน
           </p>
@@ -140,9 +145,9 @@ function DebtorsView() {
       <TextInput
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="ค้นหาชื่อ…"
+        placeholder="ค้นหาชื่อหรือเบอร์…"
         type="search"
-        aria-label="ค้นหาชื่อลูกหนี้"
+        aria-label="ค้นหาชื่อหรือเบอร์ลูกหนี้"
       />
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">

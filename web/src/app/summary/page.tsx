@@ -9,6 +9,7 @@ import {
   IconTrendUp,
   IconWallet,
 } from '@/components/icons';
+import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht } from '@/lib/format';
 import { useSummary } from '@/lib/hooks/useDashboard';
@@ -23,11 +24,14 @@ export default function SummaryPage() {
 }
 
 function SummaryView() {
-  const { data, error } = useSummary();
+  const { data, error, refetch } = useSummary();
 
   if (error)
     return (
-      <p className="py-10 text-center text-red-600">{error.message}</p>
+      <div className="space-y-6">
+        <h1 className="sr-only">ภาพรวมธุรกิจ</h1>
+        <PageError message={error.message} onRetry={() => void refetch()} />
+      </div>
     );
   if (!data) return <PageSkeleton />;
 
@@ -87,9 +91,7 @@ function SummaryView() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold text-slate-900 md:text-[1.75rem] dark:text-white">
-          ภาพรวมธุรกิจ
-        </h1>
+        <h1 className="sr-only">ภาพรวมธุรกิจ</h1>
         <p className="text-sm leading-relaxed text-slate-500 dark:text-gray-400">
           สรุปเงินต้น ดอก และยอดค้างทั้งหมด
         </p>

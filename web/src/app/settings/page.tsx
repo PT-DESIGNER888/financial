@@ -84,9 +84,7 @@ function SettingsView() {
       <div>
         <BackButton href="/" label="กลับ" />
         <div className="mt-1 space-y-1">
-          <h1 className="text-2xl font-bold text-slate-900 md:text-[1.75rem] dark:text-white">
-            ตั้งค่า
-          </h1>
+          <h1 className="sr-only">ตั้งค่า</h1>
           <p className="text-sm leading-relaxed text-slate-500 dark:text-gray-400">
             แจ้งเตือน LINE และการติดตามยอดค้าง
           </p>

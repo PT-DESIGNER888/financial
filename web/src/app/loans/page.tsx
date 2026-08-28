@@ -6,6 +6,7 @@ import { Suspense, useState } from 'react';
 import { AuthGate } from '@/components/auth-gate';
 import { buttonClassName, SelectMenu, TextInput } from '@/components/form';
 import { IconPlus } from '@/components/icons';
+import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht, cycleLabel, statusLabel, thaiDate } from '@/lib/format';
 import { useAllLoans } from '@/lib/hooks/useLoans';
@@ -55,7 +56,7 @@ function interestLabel(l: LoanListItem): string {
 }
 
 function LoansView() {
-  const { data: loans, error } = useAllLoans();
+  const { data: loans, error, refetch } = useAllLoans();
   const [q, setQ] = useState('');
   // เปิดหน้านี้พร้อมกรองสถานะได้จาก ?status= (มาจากชิปในหน้าภาพรวม)
   const initial = useSearchParams().get('status');
@@ -64,7 +65,12 @@ function LoansView() {
   );
 
   if (error)
-    return <p className="py-10 text-center text-red-600">{error.message}</p>;
+    return (
+      <div className="space-y-6">
+        <h1 className="sr-only">สัญญาเงินกู้</h1>
+        <PageError message={error.message} onRetry={() => void refetch()} />
+      </div>
+    );
   if (!loans) return <PageSkeleton />;
 
   const needle = q.trim().toLowerCase();
@@ -91,9 +97,7 @@ function LoansView() {
     <div className="space-y-6">
       <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-slate-900 md:text-[1.75rem] dark:text-white">
-            สัญญาเงินกู้
-          </h1>
+          <h1 className="sr-only">สัญญาเงินกู้</h1>
           <p className="text-sm text-slate-500 dark:text-gray-400">
             ทั้งหมด {loans.length} สัญญา · เปิดอยู่ {openCount}
             {overdueCount > 0 && (
@@ -116,8 +120,8 @@ function LoansView() {
         </Link>
       </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <div className="flex-1">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+        <div className="min-w-0 flex-1">
           <TextInput
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -126,7 +130,7 @@ function LoansView() {
             aria-label="ค้นหาสัญญา"
           />
         </div>
-        <div className="w-full shrink-0 sm:w-40">
+        <div className="w-full shrink-0 sm:w-52">
           <SelectMenu
             value={filter}
             onChange={setFilter}
@@ -136,23 +140,23 @@ function LoansView() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">
-        <div className="divide-y divide-slate-100 sm:hidden dark:divide-gray-800">
+        <div className="grid grid-cols-1 gap-3 p-3 xl:hidden lg:grid-cols-2">
           {filtered.map((l) => (
             <Link
               key={l.id}
               href={`/debtors/${l.debtorId}`}
-              className="block space-y-3 p-4 transition-colors active:bg-slate-50 dark:active:bg-gray-800/50"
+              className="block space-y-4 rounded-xl border border-slate-200 p-4 transition-colors hover:border-primary/30 hover:bg-slate-50 active:bg-slate-100 dark:border-gray-800 dark:hover:border-primary/40 dark:hover:bg-gray-800/50"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold text-slate-900 dark:text-white">
                     {l.debtorName}
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-gray-400">
+                  <p className="truncate text-xs text-slate-500 dark:text-gray-400">
                     เลขที่สัญญา {l.contractNumber ?? '—'}
                   </p>
                 </div>
-                <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                <div className="flex max-w-[9.5rem] shrink-0 flex-wrap justify-end gap-1">
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusStyle[l.status]}`}
                   >
@@ -166,129 +170,101 @@ function LoansView() {
                 </div>
               </div>
 
-              <div>
-                <p className="text-xs text-slate-500 dark:text-gray-400">
-                  คงเหลือ
-                </p>
-                <p className="text-xl font-bold text-slate-900 tabular-nums dark:text-white">
-                  ฿{baht(l.remaining)}
-                </p>
-              </div>
+              <dl className="grid grid-cols-3 gap-px overflow-hidden rounded-xl bg-slate-200 dark:bg-gray-800">
+                <MoneyCell label="ต้องชำระ" value={l.totalDue} />
+                <MoneyCell label="รับแล้ว" value={l.paidTotal} tone="paid" />
+                <MoneyCell label="คงเหลือ" value={l.remaining} tone="remaining" />
+              </dl>
 
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <div>
-                  <dt className="text-xs text-slate-500 dark:text-gray-400">
-                    เงินต้น
-                  </dt>
-                  <dd className="font-medium text-slate-800 tabular-nums dark:text-gray-200">
-                    ฿{baht(l.principalOriginal)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-slate-500 dark:text-gray-400">
-                    งวดถัดไป
-                  </dt>
-                  <dd className="font-medium text-slate-800 dark:text-gray-200">
-                    {l.nextDueDate ? thaiDate(l.nextDueDate) : '—'}
-                  </dd>
-                </div>
-                <div className="col-span-2">
-                  <dt className="text-xs text-slate-500 dark:text-gray-400">
-                    ดอกเบี้ย
-                  </dt>
-                  <dd className="text-slate-700 dark:text-gray-300">
-                    {interestLabel(l)}
-                  </dd>
-                </div>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                <Detail label="เงินต้น" value={`฿${baht(l.principalOriginal)}`} />
+                <Detail
+                  label="งวดถัดไป"
+                  value={l.nextDueDate ? thaiDate(l.nextDueDate) : '—'}
+                />
+                <Detail
+                  className="col-span-2"
+                  label="ดอกเบี้ย"
+                  value={interestLabel(l)}
+                />
               </dl>
             </Link>
           ))}
           {filtered.length === 0 && (
-            <p className="py-8 text-center text-gray-500 dark:text-gray-400">
+            <p className="col-span-full py-8 text-center text-gray-500 dark:text-gray-400">
               ไม่พบสัญญา
             </p>
           )}
         </div>
 
-        <div className="hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[760px] text-left text-[13px]">
+        <div className="hidden overflow-x-auto xl:block">
+          <table className="w-full table-fixed text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-[12px] font-semibold text-slate-500 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-400">
-                <th className="px-4 py-2.5 font-semibold">เลขที่สัญญา</th>
-                <th className="px-3 py-2.5 font-semibold">ลูกหนี้</th>
-                <th className="px-3 py-2.5 text-right font-semibold">เงินต้น</th>
-                <th className="px-3 py-2.5 font-semibold">ดอกเบี้ย</th>
-                <th className="px-3 py-2.5 text-right font-semibold">
-                  ต้องชำระรวม
-                </th>
-                <th className="px-3 py-2.5 text-right font-semibold">
-                  ชำระแล้ว
-                </th>
-                <th className="px-3 py-2.5 text-right font-semibold">
-                  คงเหลือ
-                </th>
-                <th className="px-3 py-2.5 font-semibold">งวดถัดไป</th>
-                <th className="px-4 py-2.5 text-right font-semibold">สถานะ</th>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[13px] font-semibold text-slate-600 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-300">
+                <th className="w-[25%] px-5 py-3.5 font-semibold">สัญญา / ลูกหนี้</th>
+                <th className="w-[31%] px-4 py-3.5 font-semibold">ยอดชำระ</th>
+                <th className="w-[29%] px-4 py-3.5 font-semibold">รายละเอียดสัญญา</th>
+                <th className="w-[15%] px-5 py-3.5 font-semibold">สถานะ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {filtered.map((l) => (
                 <tr
                   key={l.id}
-                  className="text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/50"
+                  className="align-top text-gray-700 transition-colors hover:bg-slate-50 dark:text-gray-300 dark:hover:bg-gray-800/50"
                 >
-                  <td className="px-4 py-2.5 whitespace-nowrap">
+                  <td className="max-w-0 px-5 py-4">
                     <Link
                       href={`/debtors/${l.debtorId}`}
-                      className="font-medium text-gray-900 hover:text-primary hover:underline dark:text-white"
+                      className="block truncate font-semibold text-slate-900 hover:text-primary hover:underline dark:text-white"
                     >
                       {l.contractNumber ?? '—'}
                     </Link>
-                  </td>
-                  <td className="px-3 py-2.5">
                     <Link
                       href={`/debtors/${l.debtorId}`}
-                      className="hover:text-primary hover:underline"
+                      className="mt-1 block truncate font-medium text-slate-600 hover:text-primary hover:underline dark:text-gray-300"
                     >
                       {l.debtorName}
                     </Link>
                   </td>
-                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                    ฿{baht(l.principalOriginal)}
+                  <td className="px-4 py-4">
+                    <div className="grid min-w-0 grid-cols-3 gap-2 xl:gap-3">
+                      <TableMoney label="ต้องชำระ" value={l.totalDue} />
+                      <TableMoney label="รับแล้ว" value={l.paidTotal} tone="paid" />
+                      <TableMoney label="คงเหลือ" value={l.remaining} tone="remaining" />
+                    </div>
                   </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-xs">
-                    {interestLabel(l)}
+                  <td className="min-w-0 px-4 py-4">
+                    <p className="font-medium text-slate-800 tabular-nums dark:text-gray-200">
+                      เงินต้น ฿{baht(l.principalOriginal)}
+                    </p>
+                    <p className="mt-1 text-[13px] leading-snug break-words text-slate-500 dark:text-gray-400">
+                      {interestLabel(l)}
+                    </p>
+                    <p className="mt-1.5 text-[13px] font-medium text-slate-600 dark:text-gray-300">
+                      งวดถัดไป {l.nextDueDate ? thaiDate(l.nextDueDate) : '—'}
+                    </p>
                   </td>
-                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                    ฿{baht(l.totalDue)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right whitespace-nowrap text-emerald-600 dark:text-emerald-400">
-                    ฿{baht(l.paidTotal)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap text-gray-900 dark:text-white">
-                    ฿{baht(l.remaining)}
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-xs">
-                    {l.nextDueDate ? thaiDate(l.nextDueDate) : '—'}
-                  </td>
-                  <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusStyle[l.status]}`}
-                    >
-                      {statusLabel[l.status]}
-                    </span>
+                  <td className="px-5 py-4">
+                    <div className="flex flex-wrap gap-1.5">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle[l.status]}`}
+                      >
+                        {statusLabel[l.status]}
+                      </span>
                     {l.overdue && (
-                      <span className="ml-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/10 dark:text-red-400">
+                      <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
                         ค้างชำระ
                       </span>
                     )}
+                    </div>
                   </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={4}
                     className="py-8 text-center text-gray-500 dark:text-gray-400"
                   >
                     ไม่พบสัญญา
@@ -300,6 +276,77 @@ function LoansView() {
         </div>
       </div>
 
+    </div>
+  );
+}
+
+function MoneyCell({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: 'paid' | 'remaining';
+}) {
+  const color =
+    tone === 'paid'
+      ? 'text-emerald-700 dark:text-emerald-400'
+      : tone === 'remaining'
+        ? 'text-slate-900 dark:text-white'
+        : 'text-slate-700 dark:text-gray-200';
+  return (
+    <div className="min-w-0 bg-white px-1.5 py-2.5 sm:px-2.5 sm:py-3 dark:bg-gray-900">
+      <dt className="text-[11px] leading-tight text-slate-500 dark:text-gray-400">
+        {label}
+      </dt>
+      <dd
+        className={`mt-1 text-[13px] font-bold leading-tight break-words tabular-nums sm:text-[15px] ${color}`}
+      >
+        ฿{baht(value)}
+      </dd>
+    </div>
+  );
+}
+
+function Detail({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <dt className="text-xs text-slate-500 dark:text-gray-400">{label}</dt>
+      <dd className="mt-0.5 font-medium leading-snug text-slate-700 dark:text-gray-300">{value}</dd>
+    </div>
+  );
+}
+
+function TableMoney({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: 'paid' | 'remaining';
+}) {
+  const color =
+    tone === 'paid'
+      ? 'text-emerald-700 dark:text-emerald-400'
+      : tone === 'remaining'
+        ? 'text-slate-900 dark:text-white'
+        : 'text-slate-700 dark:text-gray-200';
+  return (
+    <div className="min-w-0">
+      <p className="text-[12px] text-slate-500 dark:text-gray-400">{label}</p>
+      <p className={`mt-1 text-[13px] font-bold leading-tight break-words tabular-nums xl:text-sm ${color}`}>
+        ฿{baht(value)}
+      </p>
     </div>
   );
 }

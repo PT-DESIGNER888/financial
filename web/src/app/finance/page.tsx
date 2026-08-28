@@ -17,6 +17,7 @@ import {
   SelectMenu,
   TextInput,
 } from '@/components/form';
+import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
 import { downloadFile } from '@/lib/api';
 import { baht, thaiDate } from '@/lib/format';
@@ -51,7 +52,7 @@ function FinanceView() {
   const [addingTx, setAddingTx] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  const { data: cash, error } = useCashPosition();
+  const { data: cash, error, refetch } = useCashPosition();
   const { data: txs } = useCashTxList();
   const { data: trend = [] } = useTrend(30);
   // รายงานรายเดือน — โหลดใหม่อัตโนมัติเมื่อเปลี่ยนเดือน (query key ผูกกับ month)
@@ -74,7 +75,10 @@ function FinanceView() {
 
   if (error)
     return (
-      <p className="py-10 text-center text-red-600">{error.message}</p>
+      <div className="space-y-6">
+        <h1 className="sr-only">การเงิน & รายงาน</h1>
+        <PageError message={error.message} onRetry={() => void refetch()} />
+      </div>
     );
   if (!cash || !txs) return <PageSkeleton />;
 
@@ -97,9 +101,7 @@ function FinanceView() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-slate-900 md:text-[1.75rem] dark:text-white">
-            การเงิน & รายงาน
-          </h1>
+          <h1 className="sr-only">การเงิน & รายงาน</h1>
           <p className="text-[13px] leading-relaxed text-slate-500 dark:text-gray-400">
             เงินสดในมือ กระแสเงิน และสมุดธุรกรรม
           </p>

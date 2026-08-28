@@ -5,6 +5,7 @@ import { AuthGate } from '@/components/auth-gate';
 import { BackButton } from '@/components/back-button';
 import { Button } from '@/components/form';
 import { IconCopy, IconPrinter } from '@/components/icons';
+import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
 import {
   baht,
@@ -49,14 +50,15 @@ export default function BillPage({
 
 /** บิลแจ้งยอด — จัดหน้าให้แคปหน้าจอส่งให้ลูกหนี้ได้เลย */
 function BillView({ debtorId, date }: { debtorId: string; date: string }) {
-  const { data, error } = useBill(debtorId, date);
+  const { data, error, refetch } = useBill(debtorId, date);
   const [copying, setCopying] = useState(false);
 
   if (error)
     return (
-      <p className="py-10 text-center font-medium text-red-600">
-        {error.message}
-      </p>
+      <div className="space-y-4">
+        <BackButton href="/" label="เก็บวันนี้" />
+        <PageError message={error.message} onRetry={() => void refetch()} />
+      </div>
     );
   if (!data) return <PageSkeleton />;
 

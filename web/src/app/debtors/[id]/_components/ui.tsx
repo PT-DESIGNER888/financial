@@ -7,10 +7,12 @@ export function ModalShell({
   title,
   children,
   onClose,
+  size = 'md',
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
+  size?: 'md' | 'xl';
 }) {
   return (
     <div
@@ -19,7 +21,9 @@ export function ModalShell({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-5 sm:rounded-2xl dark:border-gray-800 dark:bg-gray-900"
+        className={`max-h-[90vh] w-full space-y-5 overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-5 sm:rounded-2xl sm:p-6 dark:border-gray-800 dark:bg-gray-900 ${
+          size === 'xl' ? 'max-w-3xl' : 'max-w-lg'
+        }`}
       >
         <h2 className="text-lg font-bold text-gray-900 dark:text-white">
           {title}
