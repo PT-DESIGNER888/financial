@@ -32,7 +32,9 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
       imports: [AppModule],
     }).compile();
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
     const res = await http()
       .post('/auth/login')
@@ -65,10 +67,7 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
     expect(body.startDate).toBe(today);
     expect(body.firstDueDate).toBe(today); // วันปล่อยกู้ = วันที่ 1
 
-    const dash = await http()
-      .get('/dashboard/today')
-      .set(auth())
-      .expect(200);
+    const dash = await http().get('/dashboard/today').set(auth()).expect(200);
     const data = dash.body as {
       debtors: { debtorId: string; dueInterest: number }[];
     };
