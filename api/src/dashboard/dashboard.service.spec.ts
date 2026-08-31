@@ -3,6 +3,7 @@ import type { Loan } from '../entities/loan.entity';
 import {
   appointmentDue,
   arrearsBucket,
+  appointmentInterest,
   foldedArrearsOnAppointment,
   remainingBalanceOnDay,
   splitInstallmentDue,
@@ -226,6 +227,68 @@ describe('foldedArrearsOnAppointment — พับดอกค้างเข้
         arrears: 600,
       }),
     ).toBe(0);
+  });
+});
+
+describe('appointmentInterest — วันนัดคืนต้นดึงดอกรอบที่กำลังเดิน', () => {
+  const cycle = (interestDue: number, interestRemaining: number) => ({
+    interestDue,
+    interestRemaining,
+  });
+
+  it('วันนี้ครบดอกอยู่แล้ว → ใช้ดอกรอบวันนี้ ไม่ดึงรอบอื่นมาซ้อน', () => {
+    expect(
+      appointmentInterest({
+        duePrincipal: 3_000,
+        frozen: false,
+        todayCycle: cycle(600, 600),
+        runningCycle: cycle(600, 600),
+      }),
+    ).toEqual({ dueInterest: 600, remainingInterest: 600 });
+  });
+
+  it('นัดคืนต้นวันนี้ แต่ดอกรอบนี้ยังไม่ครบกำหนด → โชว์ดอกรอบที่กำลังเดิน', () => {
+    expect(
+      appointmentInterest({
+        duePrincipal: 1_000,
+        frozen: false,
+        todayCycle: null,
+        runningCycle: cycle(200, 200),
+      }),
+    ).toEqual({ dueInterest: 200, remainingInterest: 200 });
+  });
+
+  it('จ่ายดอกของรอบที่เดินไปบางส่วนแล้ว → เหลือเท่าที่ยังไม่จ่าย', () => {
+    expect(
+      appointmentInterest({
+        duePrincipal: 1_000,
+        frozen: false,
+        todayCycle: null,
+        runningCycle: cycle(200, 50),
+      }),
+    ).toEqual({ dueInterest: 200, remainingInterest: 50 });
+  });
+
+  it('ไม่มีนัดคืนต้นวันนี้ → ไม่ดึงดอกรอบอนาคตมาพองยอดเก็บวันนี้', () => {
+    expect(
+      appointmentInterest({
+        duePrincipal: 0,
+        frozen: false,
+        todayCycle: null,
+        runningCycle: cycle(200, 200),
+      }),
+    ).toEqual({ dueInterest: 0, remainingInterest: 0 });
+  });
+
+  it('ยอดตาย/ผ่อนงวด → ไม่ดึงดอกรอบมา', () => {
+    expect(
+      appointmentInterest({
+        duePrincipal: 1_000,
+        frozen: true,
+        todayCycle: null,
+        runningCycle: cycle(200, 200),
+      }),
+    ).toEqual({ dueInterest: 0, remainingInterest: 0 });
   });
 });
 

@@ -240,6 +240,7 @@ export interface TodayItem {
   /** นัดคืนต้นที่ถึงกำหนดวันนี้ */
   duePrincipal: number;
   dueInstallment: number;
+  /** ต้องส่งวันนี้ = ดอก (รวมดอกรอบที่กำลังเดินถ้าเป็นวันนัดคืนต้น) + ต้น + งวด + ค้างที่พับเข้า */
   dueTotal: number;
   paidToday: number;
   remainingToday: number;

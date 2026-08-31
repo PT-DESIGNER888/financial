@@ -123,6 +123,33 @@ export function foldedArrearsOnAppointment(input: {
 }
 
 /**
+ * ดอกที่ใช้โชว์/เก็บในวันที่เลือก
+ * - วันนี้เป็นวันครบดอกรอบนี้ → ใช้ดอกรอบวันนี้
+ * - วันนัดคืนต้นแต่ดอกรอบนี้ยังไม่ครบกำหนด → ดึงดอกรอบที่กำลังเดินมาเก็บพร้อมต้น
+ *   (จ่ายได้ทั้งรอบอยู่แล้ว — หน้าเก็บต้องโชว์ยอดนี้ ไม่งั้นกดรับแล้วดอกถูกหักเงียบ)
+ */
+export function appointmentInterest(input: {
+  duePrincipal: number;
+  frozen: boolean;
+  todayCycle: { interestDue: number; interestRemaining: number } | null;
+  runningCycle: { interestDue: number; interestRemaining: number } | null;
+}): { dueInterest: number; remainingInterest: number } {
+  if (input.todayCycle) {
+    return {
+      dueInterest: input.todayCycle.interestDue,
+      remainingInterest: input.todayCycle.interestRemaining,
+    };
+  }
+  if (input.duePrincipal > 0 && !input.frozen && input.runningCycle) {
+    return {
+      dueInterest: input.runningCycle.interestDue,
+      remainingInterest: input.runningCycle.interestRemaining,
+    };
+  }
+  return { dueInterest: 0, remainingInterest: 0 };
+}
+
+/**
  * ยอดที่ยังต้องเก็บของวันนั้น หลังหักเงินที่รับมาแล้ว
  *
  * ผ่อนงวดต้องแยกออกมา เพราะ dueNow ของตารางผ่อนหักเงินที่จ่ายมาแล้ว "ทั้งหมด"
@@ -223,12 +250,15 @@ export class DashboardService {
     // ดูจากชนิดยอด ไม่ใช่สถานะ — ยอดตายที่ปิดไปแล้วยังต้องอ่าน deadBalance อยู่
     const frozen = hasFrozenBalance(loan);
 
-    // ดอกรอบที่ครบกำหนดวันนี้ — หักที่จ่ายมาแล้วในรอบ (จ่ายล่วงหน้า/แบ่งจ่าย)
-    const cycle = this.loansService.cycleStatusOn(loan, day);
-    const dueInterest = cycle?.interestDue ?? 0;
-    const remainingInterest = cycle?.interestRemaining ?? 0;
-
     const duePrincipal = appointmentDue(loan, day);
+
+    // ดอกรอบที่ครบกำหนดวันนี้ — วันนัดคืนต้นถ้ายังไม่ครบดอก ให้ดึงรอบที่กำลังเดินมาด้วย
+    const { dueInterest, remainingInterest } = appointmentInterest({
+      duePrincipal,
+      frozen,
+      todayCycle: this.loansService.cycleStatusOn(loan, day),
+      runningCycle: this.loansService.currentCycleInfo(loan, day),
+    });
 
     // ยอดตาย/ผ่อนงวดที่ถึงกำหนดวันนี้
     // มีนัดคืนต้นวันเดียวกัน = ยึดตามที่นัด (นัดคือข้อตกลงเฉพาะวันนั้น ไม่บวกซ้ำกับงวด)
@@ -374,7 +404,7 @@ export class DashboardService {
   /**
    * รายการเก็บของวันที่เลือก จัดกลุ่มตามลูกหนี้
    * - ยอดค้างสะสมโดยทั่วไปไม่รวมใน "ต้องเก็บวันนี้" (ดูแยกที่หน้ายอดค้าง)
-   *   ยกเว้นวันนัดคืนต้นของยอดปกติ — พับดอกค้างเข้ายอดวันนี้ให้เก็บเป็นก้อนเดียวกับต้น
+   *   ยกเว้นวันนัดคืนต้นของยอดปกติ — พับดอกค้าง + ดอกรอบที่กำลังเดิน เข้ายอดวันนี้ให้เก็บเป็นก้อนเดียวกับต้น
    * - เลือกวันล่วงหน้า/ย้อนหลังได้ เพื่อดูว่าวันจันทร์/อังคาร… มีใครต้องส่งบ้าง
    */
   async today(date?: string) {
