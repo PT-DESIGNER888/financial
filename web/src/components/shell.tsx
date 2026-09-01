@@ -18,6 +18,7 @@ import {
 } from '@/components/icons';
 import { BrandLogo } from '@/components/brand-logo';
 import { ConfirmHost } from '@/components/confirm-host';
+import { LicenseBadge } from '@/components/license-badge';
 import { Toaster } from '@/components/toaster';
 import { useAuthStore } from '@/lib/auth-store';
 
@@ -191,41 +192,44 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 </p>
               </div>
             </div>
-            <div className="hidden items-center gap-1.5 md:flex">
-              <Link
-                href="/settings"
-                title="ตั้งค่า"
-                aria-label="ตั้งค่า"
-                className="flex size-11 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                <IconSettings className="size-6" />
-              </Link>
-              <button
-                onClick={toggle}
-                title="สลับโหมดสว่าง/มืด"
-                aria-label="สลับโหมดสว่าง/มืด"
-                className="flex size-11 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                {dark ? (
-                  <IconSun className="size-6" />
-                ) : (
-                  <IconMoon className="size-6" />
-                )}
-              </button>
-              {accessToken && (
-                <button
-                  onClick={() => {
-                    clear();
-                    router.push('/login');
-                  }}
-                  className="flex size-11 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 md:size-auto md:gap-2 md:px-4 md:py-2.5 md:text-[15px] md:font-semibold dark:text-gray-300 dark:hover:bg-gray-800"
-                  aria-label="ออกจากระบบ"
-                  title="ออกจากระบบ"
+            <div className="flex items-center gap-3 md:gap-4">
+              <LicenseBadge />
+              <div className="hidden items-center gap-1 border-l border-[#d7dce3] pl-4 md:flex dark:border-gray-800">
+                <Link
+                  href="/settings"
+                  title="ตั้งค่า"
+                  aria-label="ตั้งค่า"
+                  className="flex size-11 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800"
                 >
-                  <IconLogout className="size-6 md:size-5" />
-                  <span className="hidden md:inline">ออกจากระบบ</span>
+                  <IconSettings className="size-6" />
+                </Link>
+                <button
+                  onClick={toggle}
+                  title="สลับโหมดสว่าง/มืด"
+                  aria-label="สลับโหมดสว่าง/มืด"
+                  className="flex size-11 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  {dark ? (
+                    <IconSun className="size-6" />
+                  ) : (
+                    <IconMoon className="size-6" />
+                  )}
                 </button>
-              )}
+                {accessToken && (
+                  <button
+                    onClick={() => {
+                      clear();
+                      router.push('/login');
+                    }}
+                    className="flex size-11 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 md:size-auto md:gap-2 md:px-4 md:py-2.5 md:text-[15px] md:font-semibold dark:text-gray-300 dark:hover:bg-gray-800"
+                    aria-label="ออกจากระบบ"
+                    title="ออกจากระบบ"
+                  >
+                    <IconLogout className="size-6 md:size-5" />
+                    <span className="hidden md:inline">ออกจากระบบ</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </header>

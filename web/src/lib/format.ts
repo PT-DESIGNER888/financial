@@ -17,6 +17,16 @@ export function thaiDate(dateStr: string): string {
   });
 }
 
+/** "16 กรกฎาคม 2569" — ใช้กับวันสำคัญที่ต้องอ่านปีเต็ม */
+export function thaiDateFull(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('th-TH', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /** วันนี้ตามเครื่อง รูปแบบ YYYY-MM-DD (ตรงกับที่ API ใช้) */

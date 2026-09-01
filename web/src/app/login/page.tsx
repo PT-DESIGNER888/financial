@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { BrandLogo } from '@/components/brand-logo';
 import { Button, Field, TextInput } from '@/components/form';
+import { LicenseBadge } from '@/components/license-badge';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
@@ -46,6 +47,9 @@ export default function LoginPage() {
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[#eceef1] dark:bg-gray-950"
       />
+      <div className="absolute top-5 right-5 z-10 md:top-6 md:right-8">
+        <LicenseBadge />
+      </div>
 
       <form
         onSubmit={handleSubmit(onSubmit)}
