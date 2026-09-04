@@ -3,12 +3,11 @@
 import { useMemo, useState } from 'react';
 import { DatePicker } from '@/components/date-picker';
 import { Field, ModalButtons, TextInput } from '@/components/form';
-import { baht, thaiDate } from '@/lib/format';
+import { addDaysISO, baht, thaiDate } from '@/lib/format';
 import {
   crossesNextRound,
   cycleStepOf,
   previewCyclesUntil,
-  shortcutCollectDate,
 } from '@/lib/interest-appointment';
 import { useEditLoan, useUpdateCycle } from '@/lib/hooks/useLoans';
 import { toast } from '@/lib/toast-store';
@@ -128,12 +127,7 @@ export function EditCycleModal({
   };
 
   const saving = update.isPending || editLoan.isPending;
-  const shortcuts =
-    loanCycle === 'WEEKLY'
-      ? [2, 4]
-      : loanCycle === 'DAILY'
-        ? [7, 10, 14]
-        : [2, 3];
+  const shortcuts = [7, 10, 14];
 
   return (
     <ModalShell title="นัดเก็บดอก" onClose={onClose}>
@@ -143,8 +137,7 @@ export function EditCycleModal({
       {step && (
         <div className="flex flex-wrap gap-2">
           {shortcuts.map((n) => {
-            const d = shortcutCollectDate(cycle.dueDate, loanCycle, n);
-            if (!d) return null;
+            const d = addDaysISO(cycle.dueDate, n);
             const active = dueDate === d;
             return (
               <button
@@ -157,11 +150,7 @@ export function EditCycleModal({
                     : 'border border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800'
                 }`}
               >
-                {loanCycle === 'WEEKLY'
-                  ? `${n} อาทิตย์`
-                  : loanCycle === 'DAILY'
-                    ? `${n} วัน`
-                    : `${n} รอบ`}
+                {n} วัน
               </button>
             );
           })}
