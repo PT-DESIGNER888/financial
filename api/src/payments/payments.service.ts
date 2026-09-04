@@ -124,13 +124,30 @@ export class PaymentsService {
       };
     }
     const cur = this.loansService.currentCycleInfo(loan);
-    const cycleDue =
-      interestDueOverride !== undefined && cur
+    const appt = this.loansService.interestAppointmentQuote(loan);
+    const apptOpen =
+      !!appt &&
+      !!loan.interestDueDate &&
+      loan.interestDueDate >= todayStr();
+    const cycleDue = apptOpen
+      ? interestDueOverride !== undefined
+        ? round2(interestDueOverride)
+        : appt.agreedAmount
+      : interestDueOverride !== undefined && cur
         ? round2(interestDueOverride)
         : (cur?.interestDue ?? 0);
-    const interestRemaining = cur
-      ? Math.max(0, round2(cycleDue - cur.interestPaid))
-      : 0;
+    const interestRemaining = apptOpen
+      ? Math.max(
+          0,
+          round2(
+            (interestDueOverride !== undefined
+              ? round2(interestDueOverride)
+              : appt.agreedAmount) - appt.paid,
+          ),
+        )
+      : cur
+        ? Math.max(0, round2(cycleDue - cur.interestPaid))
+        : 0;
     const arrearsDue = loan.arrears;
     const principalBalance = loan.outstandingPrincipal;
 
@@ -146,24 +163,34 @@ export class PaymentsService {
       arrearsPaid,
       interestPaid,
       principalPaid,
-      dueToday: cur && cur.dueDate === todayStr() ? cycleDue : 0,
+      dueToday:
+        apptOpen && loan.interestDueDate === todayStr()
+          ? cycleDue
+          : !apptOpen && cur && cur.dueDate === todayStr()
+            ? cycleDue
+            : 0,
       arrearsDue,
       interestDue: interestRemaining,
       principalBalance,
       maxReceivable,
       remainingPrincipal: round2(principalBalance - principalPaid),
-      /** ข้อมูลรอบดอกที่กำลังเดิน — ให้หน้าเว็บโชว์/แก้ยอดดอกและวันครบกำหนด */
+      /** ข้อมูลรอบดอกที่กำลังเดิน — นัดชำระดอกเปิดอยู่จะโชว์ก้อนนัด (ฟิลด์เดิม) */
       cycle: cur
         ? {
             cycleId: cur.cycleId,
-            dueDate: cur.dueDate,
-            computedInterest: cur.computedInterest,
-            interestOverride:
-              interestDueOverride !== undefined
+            dueDate: apptOpen && loan.interestDueDate
+              ? loan.interestDueDate
+              : cur.dueDate,
+            computedInterest: apptOpen
+              ? appt.computedTotal
+              : cur.computedInterest,
+            interestOverride: apptOpen
+              ? loan.interestDueAmount
+              : interestDueOverride !== undefined
                 ? round2(interestDueOverride)
                 : cur.interestOverride,
             interestDue: cycleDue,
-            interestPaid: cur.interestPaid,
+            interestPaid: apptOpen ? appt.paid : cur.interestPaid,
           }
         : null,
     };
@@ -176,21 +203,33 @@ export class PaymentsService {
     if (input.amount <= 0)
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
 
-    // ตกลงลดดอกรอบนี้: บันทึกลงรอบดอกก่อน แล้วค่อยจัดสรร (ส่วนต่างไม่ค้างเป็นหนี้)
+    // ตกลงลดดอก: นัดชำระดอกแก้ยอดก้อนนัด / ไม่มีนัดแก้รอบที่กำลังเดิน
     if (
       input.interestDueOverride !== undefined &&
       loan.status === LoanStatus.ACTIVE
     ) {
-      const cur = this.loansService.currentCycleInfo(loan);
-      if (
-        cur &&
-        round2(input.interestDueOverride) !==
-          (cur.interestOverride ?? cur.computedInterest)
-      ) {
-        await this.loansService.updateCycle(loan.id, cur.cycleId, {
-          interestOverride: round2(input.interestDueOverride),
-        });
-        loan = await this.loansService.findOne(input.loanId);
+      const appt = this.loansService.interestAppointmentQuote(loan);
+      const apptOpen =
+        !!appt && !!loan.interestDueDate && loan.interestDueDate >= todayStr();
+      if (apptOpen) {
+        if (round2(input.interestDueOverride) !== appt.agreedAmount) {
+          await this.loansService.editTerms(loan.id, {
+            interestDueAmount: round2(input.interestDueOverride),
+          });
+          loan = await this.loansService.findOne(input.loanId);
+        }
+      } else {
+        const cur = this.loansService.currentCycleInfo(loan);
+        if (
+          cur &&
+          round2(input.interestDueOverride) !==
+            (cur.interestOverride ?? cur.computedInterest)
+        ) {
+          await this.loansService.updateCycle(loan.id, cur.cycleId, {
+            interestOverride: round2(input.interestDueOverride),
+          });
+          loan = await this.loansService.findOne(input.loanId);
+        }
       }
     }
 
@@ -301,6 +340,20 @@ export class PaymentsService {
     });
     await this.payments.save(payment);
     await this.loansService.applyBalances(loan);
+    if (!frozen && loan.status === LoanStatus.ACTIVE) {
+      const fresh = await this.loansService.findOne(loan.id);
+      const appt = this.loansService.interestAppointmentQuote(fresh);
+      if (appt && appt.remaining <= 0 && fresh.interestDueDate) {
+        const sorted = [...(fresh.cycles ?? [])].sort((a, b) =>
+          a.dueDate.localeCompare(b.dueDate),
+        );
+        await this.loansService.settleInterestAppointment(
+          fresh,
+          sorted,
+          fresh.payments ?? [],
+        );
+      }
+    }
     return payment;
   }
 

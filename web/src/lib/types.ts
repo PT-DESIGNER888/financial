@@ -110,6 +110,9 @@ export interface Loan {
   /** นัดคืนต้น: วันที่ลูกหนี้ตกลงจะเอาเงินก้อนมาตัดต้น */
   principalDueDate: string | null;
   principalDueAmount: number | null;
+  /** นัดชำระดอก: วันที่ตกลงจะมาจ่ายดอกเป็นก้อน */
+  interestDueDate: string | null;
+  interestDueAmount: number | null;
   roundInstallments: boolean;
   note: string | null;
   payments?: Payment[];
@@ -223,7 +226,17 @@ export interface LoanCycleRow {
 
 export interface LoanCyclesInfo {
   current: (CurrentCycle & { interestRemaining: number }) | null;
+  appointment?: InterestAppointmentQuote | null;
   rows: LoanCycleRow[];
+}
+
+export interface InterestAppointmentQuote {
+  date: string;
+  cycles: { dueDate: string; interest: number; remaining: number }[];
+  computedTotal: number;
+  agreedAmount: number;
+  paid: number;
+  remaining: number;
 }
 
 /** รายการเก็บของยอดกู้หนึ่งก้อนในวันที่เลือก */
@@ -245,6 +258,8 @@ export interface TodayItem {
   paidToday: number;
   remainingToday: number;
   principalDueDate: string | null;
+  interestDueDate: string | null;
+  interestCycleCount?: number | null;
   note: string | null;
 }
 

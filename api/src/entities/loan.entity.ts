@@ -120,6 +120,14 @@ export class Loan {
   @Column({ ...money, nullable: true })
   principalDueAmount: number | null;
 
+  /** นัดชำระดอก: วันที่ตกลงจะมาจ่ายดอกเป็นก้อน (คิดรายรอบตามเดิม จนถึงวันนี้) */
+  @Column({ type: 'date', nullable: true })
+  interestDueDate: string | null;
+
+  /** นัดชำระดอก: ยอดที่ตกลงเก็บทั้งก้อน — null = ใช้ผลรวมดอกแต่ละรอบที่ระบบคำนวณ */
+  @Column({ ...money, nullable: true })
+  interestDueAmount: number | null;
+
   /** ปัดยอดต่องวดเป็นบาทเต็ม (เศษไปรวมงวดสุดท้าย) */
   @Column({ default: false })
   roundInstallments: boolean;

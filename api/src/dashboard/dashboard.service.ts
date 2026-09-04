@@ -7,6 +7,7 @@ import { Debtor } from '../entities/debtor.entity';
 import { Loan } from '../entities/loan.entity';
 import { Payment } from '../entities/payment.entity';
 import { round2, splitInstallmentDue } from '../loans/installment-plan';
+import { collectionInterestOnDay } from '../loans/interest-appointment';
 // re-export ให้เทสเดิมที่ import จาก dashboard.service ใช้ได้ต่อ
 export { splitInstallmentDue } from '../loans/installment-plan';
 import { LoansService } from '../loans/loans.service';
@@ -28,6 +29,8 @@ export interface DayLoanItem {
   paidToday: number;
   remainingToday: number;
   principalDueDate: string | null;
+  interestDueDate: string | null;
+  interestCycleCount: number | null;
   note: string | null;
 }
 
@@ -252,12 +255,23 @@ export class DashboardService {
 
     const duePrincipal = appointmentDue(loan, day);
 
-    // ดอกรอบที่ครบกำหนดวันนี้ — วันนัดคืนต้นถ้ายังไม่ครบดอก ให้ดึงรอบที่กำลังเดินมาด้วย
-    const { dueInterest, remainingInterest } = appointmentInterest({
+    const weekly = appointmentInterest({
       duePrincipal,
       frozen,
       todayCycle: this.loansService.cycleStatusOn(loan, day),
       runningCycle: this.loansService.currentCycleInfo(loan, day),
+    });
+    const appt = frozen
+      ? null
+      : this.loansService.interestAppointmentQuote(loan);
+    const { dueInterest, remainingInterest } = collectionInterestOnDay({
+      interestDueDate: loan.interestDueDate,
+      day,
+      isCycleDue: !!this.loansService.cycleStatusOn(loan, day),
+      agreedDue: appt?.agreedAmount ?? 0,
+      agreedRemaining: appt?.remaining ?? 0,
+      weeklyDue: weekly.dueInterest,
+      weeklyRemaining: weekly.remainingInterest,
     });
 
     // ยอดตาย/ผ่อนงวดที่ถึงกำหนดวันนี้
@@ -348,6 +362,8 @@ export class DashboardService {
         remainingInterest + remainingBalanceDue + remainingFoldedArrears,
       ),
       principalDueDate: loan.principalDueDate,
+      interestDueDate: loan.interestDueDate,
+      interestCycleCount: appt?.cycles.length ?? null,
       note: loan.note,
     };
   }

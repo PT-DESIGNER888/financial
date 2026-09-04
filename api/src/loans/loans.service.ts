@@ -29,6 +29,12 @@ import {
   type InstallmentPlan,
   type PlanRow,
 } from './installment-plan';
+import {
+  isAppointmentOpen,
+  quoteInterestAppointment,
+  settleAppointmentGroup,
+  type InterestAppointmentQuote,
+} from './interest-appointment';
 
 @Injectable()
 export class LoansService {
@@ -92,10 +98,14 @@ export class LoansService {
       anchor = addDays(gridStart, Math.floor(past / step) * step);
     }
 
-    // เติมแถวจนวันครบกำหนดล่าสุดเลยวันนี้ไป 1 รอบ
+    // เติมแถวจนวันครบกำหนดล่าสุดเลยวันนี้ (หรือวันนัดชำระดอก) ไป 1 รอบ
+    const horizon =
+      loan.interestDueDate && loan.interestDueDate > today
+        ? loan.interestDueDate
+        : today;
     const fresh: CycleRow[] = [];
     let last = anchor;
-    while (diffDays(last, today) >= 0) {
+    while (diffDays(last, horizon) >= 0) {
       last = addDays(last, step);
       fresh.push(
         this.cycleRows.create({
@@ -392,8 +402,48 @@ export class LoansService {
     return schedule;
   }
 
+  /**
+   * นัดชำระดอกของยอดนี้ ณ วันที่ until (ไม่ส่ง = วันนัดที่บันทึกไว้)
+   * ไม่มีนัด / ไม่ใช่ยอดดอกลอย → null — ของเดิมทุกเส้นทางไม่เปลี่ยน
+   */
+  interestAppointmentQuote(
+    loan: Loan,
+    until?: string,
+  ): InterestAppointmentQuote | null {
+    if (loan.status !== LoanStatus.ACTIVE || loan.cycle === LoanCycle.MONTHLY)
+      return null;
+    const date = until ?? loan.interestDueDate;
+    if (!date) return null;
+    const rows = [...(loan.cycles ?? [])].sort((a, b) =>
+      a.dueDate.localeCompare(b.dueDate),
+    );
+    const idx = rows.findIndex((r) => !r.accrued);
+    if (idx === -1) return null;
+    const startDue = rows[idx].dueDate;
+    const windowStart =
+      idx > 0 ? rows[idx - 1].dueDate : addDays(loan.startDate, -1);
+    const step = cycleStep[loan.cycle];
+    const saved =
+      !until || until === loan.interestDueDate ? loan.interestDueAmount : null;
+    return quoteInterestAppointment({
+      date,
+      startDue,
+      step,
+      windowStart,
+      agreedAmount: saved,
+      payments: loan.payments ?? [],
+      interestForDue: (d) => {
+        const st = this.cycleStatusOn(loan, d);
+        if (st)
+          return { interest: st.interestDue, remaining: st.interestRemaining };
+        const n = this.interestPerCycle(loan);
+        return { interest: n, remaining: n };
+      },
+    });
+  }
+
   /** รอบดอกของยอดดอกลอย/คงที่: รอบล่าสุดที่ผ่านมา + รอบที่กำลังเดิน/อนาคต */
-  async getCycles(id: string) {
+  async getCycles(id: string, until?: string) {
     const loan = await this.findOne(id); // accrue + gen รอบให้ครบก่อน
     if (this.isInstallment(loan) || loan.deadDate)
       throw new BadRequestException('ยอดนี้ไม่มีรอบดอก (ผ่อนงวด/ยอดตาย)');
@@ -402,8 +452,11 @@ export class LoansService {
     );
     const recentAccrued = rows.filter((r) => r.accrued).slice(-8);
     const pendingRows = rows.filter((r) => !r.accrued);
+    const preview =
+      until && /^\d{4}-\d{2}-\d{2}$/.test(until) ? until : undefined;
     return {
       current: this.currentCycleInfo(loan),
+      appointment: this.interestAppointmentQuote(loan, preview),
       rows: [...recentAccrued, ...pendingRows].map((r) => ({
         id: r.id,
         dueDate: r.dueDate,
@@ -503,9 +556,29 @@ export class LoansService {
       row.accrued = true;
       await this.cycleRows.update(row.id, { accrued: true });
     }
-    const pending = sorted.filter(
-      (r) => !r.accrued && diffDays(r.dueDate, yesterday) >= 0,
-    );
+
+    const payments =
+      loan.payments ??
+      (await this.loans.manager.find(Payment, {
+        where: { loanId: loan.id },
+      }));
+
+    // นัดหมดอายุ (ข้ามวันนัดแล้ว) — ปิดรอบที่คลุมเป็นก้อน แล้วค่อยค้างส่วนที่ยังไม่จ่าย
+    if (
+      loan.interestDueDate &&
+      !isAppointmentOpen(loan.interestDueDate, todayStr())
+    ) {
+      await this.settleInterestAppointment(loan, sorted, payments);
+    }
+
+    const apptOpen = isAppointmentOpen(loan.interestDueDate, todayStr());
+    const pending = sorted.filter((r) => {
+      if (r.accrued || diffDays(r.dueDate, yesterday) < 0) return false;
+      // รอบที่นัดคลุมอยู่ ยังไม่ดันเข้าค้างจนกว่าจะเลยวันนัด
+      if (apptOpen && loan.interestDueDate && r.dueDate <= loan.interestDueDate)
+        return false;
+      return true;
+    });
     if (pending.length === 0) {
       if (diffDays(loan.accruedThrough, yesterday) > 0) {
         loan.accruedThrough = yesterday;
@@ -513,12 +586,6 @@ export class LoansService {
       }
       return loan;
     }
-
-    const payments =
-      loan.payments ??
-      (await this.loans.manager.find(Payment, {
-        where: { loanId: loan.id },
-      }));
 
     let added = 0;
     for (const row of pending) {
@@ -553,6 +620,70 @@ export class LoansService {
       arrears: loan.arrears,
     });
     return loan;
+  }
+
+  /** ปิดรอบที่นัดคลุม: จ่ายแล้วไม่ค้าง ส่วนขาดเข้ายอดค้าง แล้วล้างนัด */
+  async settleInterestAppointment(
+    loan: Loan,
+    sorted: CycleRow[],
+    payments: Payment[],
+  ): Promise<void> {
+    const apptDate = loan.interestDueDate;
+    if (!apptDate) return;
+    const covered = sorted.filter((r) => !r.accrued && r.dueDate <= apptDate);
+    if (covered.length === 0) {
+      loan.interestDueDate = null;
+      loan.interestDueAmount = null;
+      await this.loans.update(loan.id, {
+        interestDueDate: null,
+        interestDueAmount: null,
+      });
+      return;
+    }
+    const idx0 = sorted.indexOf(covered[0]);
+    const windowStart =
+      idx0 > 0 ? sorted[idx0 - 1].dueDate : addDays(loan.startDate, -1);
+    const computed = round2(
+      covered.reduce((s, r) => s + this.cycleInterest(loan, r), 0),
+    );
+    const groupDue =
+      loan.interestDueAmount != null ? loan.interestDueAmount : computed;
+    const groupPaid = round2(
+      payments
+        .filter(
+          (p) =>
+            !p.onDeadLoan &&
+            diffDays(windowStart, p.paidDate) > 0 &&
+            diffDays(p.paidDate, apptDate) >= 0,
+        )
+        .reduce((s, p) => s + p.interestPaid, 0),
+    );
+    const { addedArrears, patches } = settleAppointmentGroup({
+      covered: covered.map((r) => ({
+        id: r.id,
+        interest: this.cycleInterest(loan, r),
+      })),
+      groupDue,
+      groupPaid,
+    });
+    for (const p of patches) {
+      const row = covered.find((r) => r.id === p.id);
+      if (!row) continue;
+      row.accrued = true;
+      row.accruedAmount = p.accruedAmount;
+      await this.cycleRows.update(row.id, {
+        accrued: true,
+        accruedAmount: p.accruedAmount,
+      });
+    }
+    loan.arrears = round2(loan.arrears + addedArrears);
+    loan.interestDueDate = null;
+    loan.interestDueAmount = null;
+    await this.loans.update(loan.id, {
+      arrears: loan.arrears,
+      interestDueDate: null,
+      interestDueAmount: null,
+    });
   }
 
   async accrueAllActive(): Promise<Loan[]> {
@@ -627,12 +758,18 @@ export class LoansService {
         overdue = remaining > 0 && paidDead < expected;
       }
       if (loan.status === LoanStatus.ACTIVE && loan.cycles?.length) {
-        // รอบดอกถัดไปจากแถวจริง (รวมวันที่ถูกเลื่อน)
-        nextDueDate =
-          [...loan.cycles]
-            .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-            .find((c) => !c.accrued && diffDays(c.dueDate, today) <= 0)
-            ?.dueDate ?? null;
+        if (
+          loan.interestDueDate &&
+          isAppointmentOpen(loan.interestDueDate, today)
+        ) {
+          nextDueDate = loan.interestDueDate;
+        } else {
+          nextDueDate =
+            [...loan.cycles]
+              .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+              .find((c) => !c.accrued && diffDays(c.dueDate, today) <= 0)
+              ?.dueDate ?? null;
+        }
       } else {
         for (let i = 1; i <= 10; i++) {
           const d = addDays(today, i);
@@ -934,6 +1071,8 @@ export class LoansService {
       deadDate: loan.deadDate,
       deadBalance: loan.deadBalance,
       installmentAmount: loan.installmentAmount,
+      interestDueDate: null,
+      interestDueAmount: null,
     });
     await this.activity.log({
       type: ActivityType.CONVERT_DEAD,
@@ -1111,6 +1250,8 @@ export class LoansService {
       roundInstallments?: boolean;
       principalDueDate?: string | null;
       principalDueAmount?: number | null;
+      interestDueDate?: string | null;
+      interestDueAmount?: number | null;
       note?: string | null;
     },
   ): Promise<Loan> {
@@ -1125,6 +1266,8 @@ export class LoansService {
       deadBalance: loan.deadBalance,
       principalDueDate: loan.principalDueDate,
       principalDueAmount: loan.principalDueAmount,
+      interestDueDate: loan.interestDueDate,
+      interestDueAmount: loan.interestDueAmount,
       note: loan.note,
     };
     const patch: Partial<Loan> = {};
@@ -1204,6 +1347,26 @@ export class LoansService {
         input.principalDueAmount === null
           ? null
           : round2(input.principalDueAmount);
+    }
+    if (input.interestDueDate !== undefined) {
+      if (loan.status !== LoanStatus.ACTIVE || loan.cycle === LoanCycle.MONTHLY)
+        throw new BadRequestException('นัดชำระดอกได้เฉพาะยอดดอกลอย/คงที่');
+      if (input.interestDueDate != null) {
+        if (diffDays(todayStr(), input.interestDueDate) < 0)
+          throw new BadRequestException('วันนัดชำระดอกต้องไม่ใช่วันที่ผ่านมา');
+        patch.interestDueDate = input.interestDueDate;
+      } else {
+        patch.interestDueDate = null;
+        patch.interestDueAmount = null;
+      }
+    }
+    if (input.interestDueAmount !== undefined) {
+      if (input.interestDueAmount !== null && input.interestDueAmount < 0)
+        throw new BadRequestException('ยอดนัดชำระดอกต้องไม่ติดลบ');
+      patch.interestDueAmount =
+        input.interestDueAmount === null
+          ? null
+          : round2(input.interestDueAmount);
     }
     if (input.note !== undefined) patch.note = input.note;
     await this.loans.update(id, patch);

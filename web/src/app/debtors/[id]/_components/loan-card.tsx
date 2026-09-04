@@ -216,6 +216,13 @@ export function LoanCard({
                 ` · ฿${baht(loan.principalDueAmount)}`}
             </p>
           )}
+          {loan.interestDueDate && (
+            <p className="mt-1.5 ml-1 inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-400">
+              นัดเก็บดอก {thaiDate(loan.interestDueDate)}
+              {loan.interestDueAmount != null &&
+                ` · ฿${baht(loan.interestDueAmount)}`}
+            </p>
+          )}
         </div>
         <div className="flex w-full shrink-0 flex-wrap gap-2 sm:w-auto">
           <button
@@ -307,7 +314,7 @@ export function LoanCard({
         )}
       </div>
 
-      {loan.status === LoanStatus.ACTIVE && <NextCycleRow loanId={loan.id} />}
+      {loan.status === LoanStatus.ACTIVE && <NextCycleRow loan={loan} />}
 
       <div className="mt-3 flex flex-wrap gap-2">
         <button
@@ -478,27 +485,46 @@ export function LoanCard({
   );
 }
 
-/** รอบดอกถัดไปของยอดดอกลอย/คงที่ — ระบบคำนวณให้ แต่เลื่อนวัน/แก้ยอดดอกได้ */
-function NextCycleRow({ loanId }: { loanId: string }) {
-  const { data } = useLoanCycles(loanId, true);
+/** รอบดอกถัดไปของยอดดอกลอย/คงที่ — นัดวันไปเก็บได้ ระบบคิดดอกแต่ละรอบให้ */
+function NextCycleRow({ loan }: { loan: Loan }) {
+  const { data } = useLoanCycles(loan.id, true);
   const [editing, setEditing] = useState(false);
   const cur = data?.current;
+  const appt = data?.appointment;
   if (!cur) return null;
   return (
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-gray-700 dark:bg-gray-950/60">
       <p className="text-sm text-slate-600 dark:text-gray-300">
-        รอบดอกถัดไป{' '}
-        <b className="text-slate-900 dark:text-white">{thaiDate(cur.dueDate)}</b>
-        {' · '}ดอก{' '}
-        <b className="text-slate-900 dark:text-white">
-          ฿{baht(cur.interestDue)}
-        </b>
-        {cur.interestOverride != null && (
+        {appt ? (
+          <>
+            นัดเก็บดอก{' '}
+            <b className="text-slate-900 dark:text-white">
+              {thaiDate(appt.date)}
+            </b>
+            {' · '}
+            {appt.cycles.length} รอบ รวม{' '}
+            <b className="text-slate-900 dark:text-white">
+              ฿{baht(appt.remaining)}
+            </b>
+          </>
+        ) : (
+          <>
+            รอบดอกถัดไป{' '}
+            <b className="text-slate-900 dark:text-white">
+              {thaiDate(cur.dueDate)}
+            </b>
+            {' · '}ดอก{' '}
+            <b className="text-slate-900 dark:text-white">
+              ฿{baht(cur.interestDue)}
+            </b>
+          </>
+        )}
+        {!appt && cur.interestOverride != null && (
           <span className="ml-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-400">
             ตกลงพิเศษ (ระบบคำนวณ ฿{baht(cur.computedInterest)})
           </span>
         )}
-        {cur.interestPaid > 0 && (
+        {!appt && cur.interestPaid > 0 && (
           <span className="ml-1.5 text-emerald-700 dark:text-emerald-400">
             จ่ายแล้ว ฿{baht(cur.interestPaid)}
           </span>
@@ -510,12 +536,15 @@ function NextCycleRow({ loanId }: { loanId: string }) {
         className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
       >
         <IconEdit className="size-3.5" />
-        เลื่อนวัน / แก้ดอก
+        นัดเก็บดอก
       </button>
       {editing && (
         <EditCycleModal
-          loanId={loanId}
+          loanId={loan.id}
           cycle={cur}
+          loanCycle={loan.cycle}
+          interestDueDate={loan.interestDueDate}
+          interestDueAmount={loan.interestDueAmount}
           onClose={() => setEditing(false)}
           onSaved={() => setEditing(false)}
         />

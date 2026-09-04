@@ -161,6 +161,11 @@ export interface EditLoanInput {
   principalDueAmount?: number;
   /** true = ล้างนัดคืนต้นทิ้ง */
   clearPrincipalDue?: boolean;
+  /** นัดชำระดอก: วันที่ตกลงจะมาจ่ายดอกเป็นก้อน */
+  interestDueDate?: string;
+  interestDueAmount?: number | null;
+  /** true = ล้างนัดชำระดอกทิ้ง */
+  clearInterestDue?: boolean;
   note?: string;
 }
 

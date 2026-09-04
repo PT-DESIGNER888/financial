@@ -73,7 +73,7 @@ export class NotifyService {
           LoanStatus.INSTALLMENT,
         ]),
       },
-      relations: { debtor: true, cycles: true },
+      relations: { debtor: true, cycles: true, payments: true },
     });
 
     const lines: string[] = [];
@@ -83,10 +83,16 @@ export class NotifyService {
       const frozen =
         l.status === LoanStatus.DEAD || l.status === LoanStatus.INSTALLMENT;
       const due = this.loansService.isDueOn(l, today);
-      const interest =
-        l.status === LoanStatus.ACTIVE && due
-          ? this.loansService.dueInterestOn(l, today)
-          : 0;
+      const appt = !frozen
+        ? this.loansService.interestAppointmentQuote(l)
+        : null;
+      let interest = 0;
+      if (l.status === LoanStatus.ACTIVE) {
+        if (appt && l.interestDueDate === today) interest = appt.remaining;
+        else if (appt && l.interestDueDate && today < l.interestDueDate && due)
+          interest = 0;
+        else if (due) interest = this.loansService.dueInterestOn(l, today);
+      }
       let installment = 0;
       if (l.status === LoanStatus.DEAD && due) {
         installment = Math.min(l.installmentAmount ?? 0, l.deadBalance ?? 0);

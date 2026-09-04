@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ModalButtons, Segmented, TextInput } from '@/components/form';
-import { baht, thaiDate } from '@/lib/format';
+import { addDaysISO, baht, thaiDate } from '@/lib/format';
 import { confirmDialog } from '@/lib/confirm-store';
 import {
   usePrepayCycles,
@@ -10,6 +10,8 @@ import {
   useRecordPayment,
   useSuggestAllocation,
 } from '@/lib/hooks/usePayments';
+import { useEditLoan } from '@/lib/hooks/useLoans';
+import { cycleStepOf } from '@/lib/interest-appointment';
 import { toast } from '@/lib/toast-store';
 import { PaymentType } from '@/lib/types';
 
@@ -26,6 +28,12 @@ interface Props {
   defaultAmount?: number;
   /** ประเภทการรับเงินเริ่มต้น — วันนัดคืนต้นใช้ BOTH */
   defaultType?: PaymentType;
+  /** นัดเก็บดอกที่กำลังจ่าย — หลังรับครบถามนัดครั้งหน้า */
+  collectAppointment?: {
+    date: string;
+    rounds: number;
+    cycle: string;
+  } | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -49,6 +57,7 @@ export function PaymentModal({
   quickAmounts,
   defaultAmount,
   defaultType,
+  collectAppointment,
   onClose,
   onSaved,
 }: Props) {
@@ -161,6 +170,7 @@ export function PaymentModal({
     : round2(Math.max(0, amountNum - maxReceivable));
 
   const record = useRecordPayment();
+  const editLoan = useEditLoan();
 
   const applyAmount = (n: number) => {
     setAmount(String(n));
@@ -247,6 +257,33 @@ export function PaymentModal({
         note: saveNote || undefined,
       });
       toast(`บันทึกรับเงิน ฿${baht(saveAmount)} — ${debtorName}`);
+      const remainingAppt = cycle
+        ? Math.max(0, cycle.interestDue - (cycle.interestPaid ?? 0))
+        : 0;
+      if (
+        collectAppointment &&
+        collectAppointment.rounds > 1 &&
+        (alloc.interestPaid ?? 0) >= remainingAppt - 0.005
+      ) {
+        const step = cycleStepOf(collectAppointment.cycle) ?? 7;
+        const next = addDaysISO(
+          collectAppointment.date,
+          collectAppointment.rounds * step,
+        );
+        if (
+          await confirmDialog({
+            title: 'นัดครั้งหน้าไหม',
+            detail: `อีก ${collectAppointment.rounds} รอบ ถึง ${thaiDate(next)}`,
+            confirmLabel: 'นัด',
+          })
+        ) {
+          await editLoan.mutateAsync({
+            id: loanId,
+            input: { interestDueDate: next },
+          });
+          toast('นัดครั้งหน้าแล้ว');
+        }
+      }
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ');
@@ -365,7 +402,9 @@ export function PaymentModal({
           paymentType !== PaymentType.ARREARS && (
           <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3.5 dark:border-gray-700 dark:bg-gray-950/60">
             <p className="text-sm text-slate-600 dark:text-gray-300">
-              รอบนี้ครบกำหนด{' '}
+            {cycle.dueDate === collectAppointment?.date
+              ? 'นัดเก็บดอก'
+              : 'รอบนี้ครบกำหนด'}{' '}
               <b className="text-slate-900 dark:text-white">
                 {thaiDate(cycle.dueDate)}
               </b>{' '}
@@ -376,7 +415,9 @@ export function PaymentModal({
             </p>
             <div className="flex items-center gap-3">
               <label className="shrink-0 text-sm font-medium text-slate-600 dark:text-gray-300">
-                เก็บดอกจริงรอบนี้
+                {cycle.dueDate === collectAppointment?.date
+                  ? 'ยอดที่ตกลงเก็บ'
+                  : 'เก็บดอกจริงรอบนี้'}
               </label>
               <TextInput
                 type="number"

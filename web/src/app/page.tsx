@@ -174,6 +174,17 @@ function TodayView() {
               ? PaymentType.BOTH
               : PaymentType.INTEREST
           }
+          collectAppointment={
+            paying.item.interestDueDate &&
+            paying.item.interestDueDate === date &&
+            (paying.item.interestCycleCount ?? 0) > 1
+              ? {
+                  date: paying.item.interestDueDate,
+                  rounds: paying.item.interestCycleCount ?? 0,
+                  cycle: paying.item.cycle,
+                }
+              : null
+          }
           quickAmounts={[
             { label: 'ยอดวันนี้', amount: paying.item.remainingToday },
           ]}
@@ -476,6 +487,12 @@ function LoanRow({ item, onPay }: { item: TodayItem; onPay: () => void }) {
           {baht(frozen ? item.deadBalance : item.outstandingPrincipal)}
           {item.duePrincipal > 0 && (
             <span className="text-primary"> · นัดคืนวันนี้</span>
+          )}
+          {item.interestDueDate && item.dueInterest > 0 && (
+            <span className="text-amber-800 dark:text-amber-400">
+              {' '}
+              · นัดเก็บดอก
+            </span>
           )}
           {prepaid && (
             <span className="text-sky-700 dark:text-sky-400">

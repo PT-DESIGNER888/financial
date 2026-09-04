@@ -28,6 +28,7 @@ function dueLines(item: TodayItem): { label: string; amount: number }[] {
   if (item.status === 'DEAD') label = 'ผ่อนยอดตาย';
   else if (item.status === 'INSTALLMENT') label = 'ผ่อนงวด';
   else if (item.duePrincipal > 0) label = 'นัดคืนต้น';
+  else if (item.interestDueDate) label = 'นัดเก็บดอก';
   else label = `ดอก${cycleLabel[item.cycle]}`;
   return [{ label, amount: item.dueTotal }];
 }

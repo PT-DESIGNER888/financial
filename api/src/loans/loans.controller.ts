@@ -212,6 +212,19 @@ class EditLoanDto {
   /** true = ล้างนัดคืนต้นทิ้ง */
   @IsOptional() @IsBoolean() clearPrincipalDue?: boolean;
 
+  /** นัดชำระดอก: วันที่ตกลงจะมาจ่ายดอกเป็นก้อน (ล้างนัดใช้ clearInterestDue) */
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) interestDueDate?: string;
+
+  /** นัดชำระดอก: ยอดที่ตกลงเก็บทั้งก้อน — ไม่ส่ง = ใช้ผลรวมที่ระบบคำนวณ */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  interestDueAmount?: number;
+
+  /** true = ล้างนัดชำระดอกทิ้ง */
+  @IsOptional() @IsBoolean() clearInterestDue?: boolean;
+
   @IsOptional() @IsString() note?: string;
 }
 
@@ -283,8 +296,8 @@ export class LoansController {
 
   /** รอบดอกของยอดดอกลอย/คงที่ (รอบล่าสุด + รอบที่กำลังเดิน/อนาคต) */
   @Get(':id/cycles')
-  cycles(@Param('id') id: string) {
-    return this.loans.getCycles(id);
+  cycles(@Param('id') id: string, @Query('until') until?: string) {
+    return this.loans.getCycles(id, until);
   }
 
   @Patch(':id/cycles/:cycleId')
@@ -321,12 +334,15 @@ export class LoansController {
 
   @Patch(':id')
   edit(@Param('id') id: string, @Body() dto: EditLoanDto) {
-    const { clearPrincipalDue, clearInstallment, ...rest } = dto;
+    const { clearPrincipalDue, clearInterestDue, clearInstallment, ...rest } =
+      dto;
     return this.loans.editTerms(id, {
       ...rest,
       installmentAmount: clearInstallment ? null : dto.installmentAmount,
       principalDueDate: clearPrincipalDue ? null : dto.principalDueDate,
       principalDueAmount: clearPrincipalDue ? null : dto.principalDueAmount,
+      interestDueDate: clearInterestDue ? null : dto.interestDueDate,
+      interestDueAmount: clearInterestDue ? null : dto.interestDueAmount,
     });
   }
 
