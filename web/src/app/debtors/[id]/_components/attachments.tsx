@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { IconPlus } from '@/components/icons';
 import { confirmDialog } from '@/lib/confirm-store';
+import { fetchAuthedBlob } from '@/lib/api';
 import {
   useAttachments,
   useDeleteAttachment,
@@ -162,8 +163,11 @@ export function AttachmentsSection({
                 ปิด
               </button>
             </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={preview.url} alt={preview.filename} className="max-h-[75vh] w-full bg-slate-100 object-contain dark:bg-gray-950" />
+            <AttachmentImage
+              attachment={preview}
+              alt={preview.filename}
+              className="max-h-[75vh] w-full bg-slate-100 object-contain dark:bg-gray-950"
+            />
           </div>
         </div>
       )}
@@ -263,9 +267,8 @@ function AttachmentGallery({
         {items.map((a) => (
           <div key={a.id} className="group relative size-20 sm:size-24">
             <button type="button" onClick={() => onPreview(a)} className="block size-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={a.url}
+              <AttachmentImage
+                attachment={a}
                 alt={a.filename}
                 className="size-full rounded-xl border border-slate-200 object-cover dark:border-gray-800"
               />
@@ -306,5 +309,77 @@ function AttachmentGallery({
         </p>
       )}
     </section>
+  );
+}
+
+function attachmentSrcPath(attachment: Attachment): string {
+  if (attachment.id.startsWith('sample-')) return attachment.url;
+  return `/attachments/${attachment.id}/file`;
+}
+
+function AttachmentImage({
+  attachment,
+  alt,
+  className,
+}: {
+  attachment: Attachment;
+  alt: string;
+  className?: string;
+}) {
+  const path = attachmentSrcPath(attachment);
+  const local = path.startsWith('/') && !path.startsWith('/attachments/');
+  const [src, setSrc] = useState<string | null>(local ? path : null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (local) {
+      setSrc(path);
+      setFailed(false);
+      return;
+    }
+    let objectUrl: string | undefined;
+    let cancelled = false;
+    setSrc(null);
+    setFailed(false);
+    void fetchAuthedBlob(path)
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [local, path]);
+
+  if (failed) {
+    return (
+      <div
+        className={`flex items-center justify-center bg-slate-100 text-center text-[11px] font-medium text-slate-500 dark:bg-gray-800 dark:text-gray-400 ${className ?? ''}`}
+      >
+        เปิดรูปไม่ได้
+      </div>
+    );
+  }
+  if (!src) {
+    return (
+      <div
+        aria-hidden
+        className={`animate-pulse bg-slate-100 dark:bg-gray-800 ${className ?? ''}`}
+      />
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      referrerPolicy="no-referrer"
+    />
   );
 }

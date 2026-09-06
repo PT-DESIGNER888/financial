@@ -109,6 +109,28 @@ export async function uploadForm<T>(path: string, form: FormData): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/** ดึงไฟล์ไบนารีจาก API (แนบ token) — ใช้โชว์รูปบัตร/เอกสารที่บัคเก็ตเป็น private */
+export async function fetchAuthedBlob(path: string, retry = true): Promise<Blob> {
+  const { accessToken } = useAuthStore.getState();
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
+  } catch (err) {
+    networkError(err);
+  }
+  if (res.status === 401 && retry && (await refreshTokens())) {
+    return fetchAuthedBlob(path, false);
+  }
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    throw new ApiError(401, 'กรุณาเข้าสู่ระบบใหม่');
+  }
+  if (!res.ok) throw new ApiError(res.status, 'โหลดรูปไม่สำเร็จ');
+  return res.blob();
+}
+
 /** ดาวน์โหลดไฟล์จาก API (แนบ token) เช่น XLSX/CSV export */
 export async function downloadFile(path: string, filename: string) {
   const { accessToken } = useAuthStore.getState();

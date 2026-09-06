@@ -5,8 +5,10 @@ import {
   Delete,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   Post,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -42,6 +44,18 @@ export class AttachmentsController {
     return this.attachments.find({
       where: { debtorId: id },
       order: { createdAt: 'DESC' },
+    });
+  }
+
+  /** ส่งไฟล์ให้หน้าเว็บหลังล็อกอิน — ไม่พึ่งลิงก์ public ของบัคเก็ต */
+  @Get('attachments/:id/file')
+  async file(@Param('id') id: string) {
+    const a = await this.attachments.findOneBy({ id });
+    if (!a) throw new NotFoundException('ไม่พบไฟล์แนบ');
+    const { buffer, contentType } = await this.storage.download(a.path, a.url);
+    return new StreamableFile(buffer, {
+      type: contentType,
+      disposition: 'inline',
     });
   }
 
