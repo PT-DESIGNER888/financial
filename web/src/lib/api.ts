@@ -135,6 +135,33 @@ export async function fetchAuthedBlob(path: string, retry = true): Promise<Blob>
   return res.blob();
 }
 
+/**
+ * โหลดไฟล์แนบ: ลองพร็อกซี same-origin ของหน้าเว็บก่อน (เลี่ยง CORS บน Railway)
+ * แล้วค่อยยิง API โดยตรง
+ */
+export async function fetchAttachmentFile(
+  id: string,
+  retry = true,
+): Promise<Blob> {
+  const { accessToken } = useAuthStore.getState();
+  const headers = accessToken
+    ? { Authorization: `Bearer ${accessToken}` }
+    : undefined;
+  try {
+    const local = await fetch(`/api/attachments/${encodeURIComponent(id)}/file`, {
+      headers,
+      cache: 'no-store',
+    });
+    if (local.status === 401 && retry && (await refreshTokens())) {
+      return fetchAttachmentFile(id, false);
+    }
+    if (local.ok) return local.blob();
+  } catch {
+    /* หน้าเว็บพร็อกซีไม่ได้ — ใช้ API โดยตรง */
+  }
+  return fetchAuthedBlob(`/attachments/${id}/file`);
+}
+
 /** ดาวน์โหลดไฟล์จาก API (แนบ token) เช่น XLSX/CSV export */
 export async function downloadFile(path: string, filename: string) {
   const { accessToken } = useAuthStore.getState();

@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   NotFoundException,
   Param,
@@ -17,6 +18,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Attachment } from '../entities/attachment.entity';
 import type { AttachmentKind } from '../entities/attachment.entity';
+import { sniffContentType } from './sniff-content-type';
 import { StorageService } from './storage.service';
 
 interface UploadedFileLike {
@@ -55,12 +57,15 @@ export class AttachmentsController {
 
   /** ส่งไฟล์ให้หน้าเว็บหลังล็อกอิน — ไม่พึ่งลิงก์ public ของบัคเก็ต */
   @Get('attachments/:id/file')
+  @Header('Cross-Origin-Resource-Policy', 'cross-origin')
+  @Header('Cache-Control', 'private, max-age=300')
   async file(@Param('id') id: string) {
     const a = await this.attachments.findOneBy({ id });
     if (!a) throw new NotFoundException('ไม่พบไฟล์แนบ');
     const { buffer, contentType } = await this.storage.download(a.path, a.url);
+    const type = sniffContentType(buffer, contentType);
     return new StreamableFile(buffer, {
-      type: contentType,
+      type,
       disposition: 'inline',
     });
   }

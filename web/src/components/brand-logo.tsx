@@ -1,5 +1,3 @@
-import Image from 'next/image';
-
 const sizes = {
   sm: { box: 'size-9', img: 36 },
   md: { box: 'size-10', img: 40 },
@@ -22,13 +20,16 @@ export function BrandLogo({
     <span
       className={`relative inline-flex shrink-0 items-center justify-center ${s.box} ${className}`}
     >
-      <Image
+      {/* Native img — Next optimizer (/_next/image) often 404s on Railway */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
         src="/logo.png"
         alt="โลโก้ระบบเงินกู้"
         width={s.img}
         height={s.img}
         className="object-contain"
-        priority={priority}
+        decoding="async"
+        fetchPriority={priority ? 'high' : 'auto'}
       />
     </span>
   );

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { IconPlus } from '@/components/icons';
 import { confirmDialog } from '@/lib/confirm-store';
-import { apiBase, fetchAuthedBlob } from '@/lib/api';
+import { apiBase, fetchAttachmentFile } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import {
   useAttachments,
@@ -313,10 +313,10 @@ function AttachmentGallery({
   );
 }
 
-function attachmentCandidates(attachment: Attachment): string[] {
-  return [attachment.url, attachment.signedUrl ?? '']
-    .filter((u) => u.length > 0)
-    .filter((u, i, all) => all.indexOf(u) === i);
+function isPdfAttachment(attachment: Attachment, mime = ''): boolean {
+  return (
+    mime.includes('pdf') || /\.pdf$/i.test(attachment.filename) || mime === 'application/pdf'
+  );
 }
 
 function AttachmentImage({
@@ -329,60 +329,76 @@ function AttachmentImage({
   className?: string;
 }) {
   const isSample = attachment.id.startsWith('sample-');
-  const [src, setSrc] = useState<string | null>(null);
+  const [src, setSrc] = useState<string | null>(isSample ? attachment.url : null);
+  const [kind, setKind] = useState<'image' | 'pdf'>('image');
   const [error, setError] = useState('');
-  const step = useRef(0);
   const blobSrc = useRef<string | null>(null);
+  const tried = useRef(0);
 
   useEffect(() => {
-    step.current = 0;
+    tried.current = 0;
     if (blobSrc.current) {
       URL.revokeObjectURL(blobSrc.current);
       blobSrc.current = null;
     }
     setError('');
-    const first = attachmentCandidates(attachment)[0] ?? null;
-    setSrc(first);
-    return () => {
-      if (blobSrc.current) {
-        URL.revokeObjectURL(blobSrc.current);
-        blobSrc.current = null;
-      }
-    };
-  }, [attachment.id, attachment.url, attachment.signedUrl]);
-
-  const tryNext = async () => {
     if (isSample) {
-      setError('เปิดรูปไม่ได้');
-      setSrc(null);
+      setKind('image');
+      setSrc(attachment.url);
       return;
     }
-    const urls = attachmentCandidates(attachment);
-    step.current += 1;
-    if (step.current < urls.length) {
-      setSrc(urls[step.current]);
-      return;
-    }
-    if (step.current === urls.length) {
+
+    let cancelled = false;
+    const load = async () => {
       try {
-        const blob = await fetchAuthedBlob(`/attachments/${attachment.id}/file`);
+        const blob = await fetchAttachmentFile(attachment.id);
+        if (cancelled) return;
+        const pdf = isPdfAttachment(attachment, blob.type);
         const next = URL.createObjectURL(blob);
-        if (blobSrc.current) URL.revokeObjectURL(blobSrc.current);
         blobSrc.current = next;
+        setKind(pdf ? 'pdf' : 'image');
         setSrc(next);
-        return;
       } catch (err) {
+        if (cancelled) return;
         const token = useAuthStore.getState().accessToken;
         if (token) {
+          setKind(isPdfAttachment(attachment) ? 'pdf' : 'image');
           setSrc(
-            `${apiBase()}/attachments/${attachment.id}/file?access_token=${encodeURIComponent(token)}`,
+            `/api/attachments/${attachment.id}/file?access_token=${encodeURIComponent(token)}`,
           );
           return;
         }
         setError(err instanceof Error ? err.message : 'เปิดรูปไม่ได้');
         setSrc(null);
-        return;
       }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+      if (blobSrc.current) {
+        URL.revokeObjectURL(blobSrc.current);
+        blobSrc.current = null;
+      }
+    };
+  }, [attachment.id, attachment.filename, attachment.url, isSample]);
+
+  const onPreviewError = () => {
+    if (isSample) {
+      setError('เปิดรูปไม่ได้');
+      setSrc(null);
+      return;
+    }
+    tried.current += 1;
+    const token = useAuthStore.getState().accessToken;
+    if (tried.current === 1 && attachment.signedUrl) {
+      setSrc(attachment.signedUrl);
+      return;
+    }
+    if (tried.current <= 2 && token) {
+      setSrc(
+        `${apiBase()}/attachments/${attachment.id}/file?access_token=${encodeURIComponent(token)}`,
+      );
+      return;
     }
     setError('เปิดรูปไม่ได้');
     setSrc(null);
@@ -398,14 +414,24 @@ function AttachmentImage({
     );
   }
 
+  if (kind === 'pdf') {
+    return (
+      <iframe
+        src={src}
+        title={alt}
+        className={className}
+        onError={onPreviewError}
+      />
+    );
+  }
+
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={src}
       alt={alt}
       className={className}
-      referrerPolicy="no-referrer"
-      onError={() => void tryNext()}
+      onError={onPreviewError}
     />
   );
 }
