@@ -46,10 +46,10 @@ export class AttachmentsController {
       order: { createdAt: 'DESC' },
     });
     return Promise.all(
-      rows.map(async (a) => {
-        const signed = await this.storage.signedUrl(a.path);
-        return { ...a, url: signed ?? a.url };
-      }),
+      rows.map(async (a) => ({
+        ...a,
+        signedUrl: await this.storage.signedUrl(a.path),
+      })),
     );
   }
 

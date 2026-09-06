@@ -4,6 +4,10 @@ import { useAuthStore } from './auth-store';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
+export function apiBase(): string {
+  return BASE;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,

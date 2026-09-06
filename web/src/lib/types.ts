@@ -67,6 +67,8 @@ export interface Attachment {
   kind: AttachmentKind;
   filename: string;
   url: string;
+  /** ลิงก์ชั่วคราวจาก API — เปิดได้แม้บัคเก็ตเป็น private */
+  signedUrl?: string | null;
   note: string | null;
   createdAt: string;
 }

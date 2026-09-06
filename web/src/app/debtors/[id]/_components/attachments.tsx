@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { IconPlus } from '@/components/icons';
 import { confirmDialog } from '@/lib/confirm-store';
-import { fetchAuthedBlob } from '@/lib/api';
+import { apiBase, fetchAuthedBlob } from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
 import {
   useAttachments,
   useDeleteAttachment,
@@ -312,6 +313,12 @@ function AttachmentGallery({
   );
 }
 
+function attachmentCandidates(attachment: Attachment): string[] {
+  return [attachment.url, attachment.signedUrl ?? '']
+    .filter((u) => u.length > 0)
+    .filter((u, i, all) => all.indexOf(u) === i);
+}
+
 function AttachmentImage({
   attachment,
   alt,
@@ -322,50 +329,71 @@ function AttachmentImage({
   className?: string;
 }) {
   const isSample = attachment.id.startsWith('sample-');
-  const [src, setSrc] = useState(attachment.url);
-  const [failed, setFailed] = useState(false);
-  const triedApi = useRef(false);
+  const [src, setSrc] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const step = useRef(0);
   const blobSrc = useRef<string | null>(null);
 
   useEffect(() => {
-    triedApi.current = false;
+    step.current = 0;
     if (blobSrc.current) {
       URL.revokeObjectURL(blobSrc.current);
       blobSrc.current = null;
     }
-    setSrc(attachment.url);
-    setFailed(false);
+    setError('');
+    const first = attachmentCandidates(attachment)[0] ?? null;
+    setSrc(first);
     return () => {
       if (blobSrc.current) {
         URL.revokeObjectURL(blobSrc.current);
         blobSrc.current = null;
       }
     };
-  }, [attachment.id, attachment.url]);
+  }, [attachment.id, attachment.url, attachment.signedUrl]);
 
-  const tryApiFile = async () => {
-    if (isSample || triedApi.current) {
-      setFailed(true);
+  const tryNext = async () => {
+    if (isSample) {
+      setError('เปิดรูปไม่ได้');
+      setSrc(null);
       return;
     }
-    triedApi.current = true;
-    try {
-      const blob = await fetchAuthedBlob(`/attachments/${attachment.id}/file`);
-      const next = URL.createObjectURL(blob);
-      if (blobSrc.current) URL.revokeObjectURL(blobSrc.current);
-      blobSrc.current = next;
-      setSrc(next);
-    } catch {
-      setFailed(true);
+    const urls = attachmentCandidates(attachment);
+    step.current += 1;
+    if (step.current < urls.length) {
+      setSrc(urls[step.current]);
+      return;
     }
+    if (step.current === urls.length) {
+      try {
+        const blob = await fetchAuthedBlob(`/attachments/${attachment.id}/file`);
+        const next = URL.createObjectURL(blob);
+        if (blobSrc.current) URL.revokeObjectURL(blobSrc.current);
+        blobSrc.current = next;
+        setSrc(next);
+        return;
+      } catch (err) {
+        const token = useAuthStore.getState().accessToken;
+        if (token) {
+          setSrc(
+            `${apiBase()}/attachments/${attachment.id}/file?access_token=${encodeURIComponent(token)}`,
+          );
+          return;
+        }
+        setError(err instanceof Error ? err.message : 'เปิดรูปไม่ได้');
+        setSrc(null);
+        return;
+      }
+    }
+    setError('เปิดรูปไม่ได้');
+    setSrc(null);
   };
 
-  if (failed) {
+  if (error || !src) {
     return (
       <div
-        className={`flex items-center justify-center bg-slate-100 text-center text-[11px] font-medium text-slate-500 dark:bg-gray-800 dark:text-gray-400 ${className ?? ''}`}
+        className={`flex items-center justify-center bg-slate-100 px-1 text-center text-[11px] font-medium text-slate-500 dark:bg-gray-800 dark:text-gray-400 ${className ?? ''}`}
       >
-        เปิดรูปไม่ได้
+        {error || 'กำลังโหลดรูป…'}
       </div>
     );
   }
@@ -377,7 +405,7 @@ function AttachmentImage({
       alt={alt}
       className={className}
       referrerPolicy="no-referrer"
-      onError={() => void tryApiFile()}
+      onError={() => void tryNext()}
     />
   );
 }

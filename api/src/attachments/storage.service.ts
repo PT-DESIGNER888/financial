@@ -37,6 +37,16 @@ export class StorageService {
     return `${base}/storage/v1/object/${this.bucket}/${this.encodedPath(path)}`;
   }
 
+  /** Supabase บังคับทั้ง Authorization และ apikey — ขาดตัวใดตัวหนึ่งมัก 401 */
+  private authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    const key = this.config.get<string>('SUPABASE_SERVICE_KEY')!;
+    return {
+      Authorization: `Bearer ${key}`,
+      apikey: key,
+      ...extra,
+    };
+  }
+
   async upload(
     path: string,
     buffer: Buffer,
@@ -51,11 +61,10 @@ export class StorageService {
 
     const res = await fetch(this.objectUrl(path), {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
+      headers: this.authHeaders({
         'Content-Type': contentType,
         'x-upsert': 'true',
-      },
+      }),
       body: new Uint8Array(buffer),
     });
     if (!res.ok) {
@@ -84,7 +93,7 @@ export class StorageService {
     }
 
     const res = await fetch(this.objectUrl(path), {
-      headers: { Authorization: `Bearer ${key}` },
+      headers: this.authHeaders(),
     });
     if (res.ok) {
       return {
@@ -96,7 +105,7 @@ export class StorageService {
 
     if (fallbackUrl) {
       const fallback = await fetch(fallbackUrl, {
-        headers: { Authorization: `Bearer ${key}` },
+        headers: this.authHeaders(),
       });
       if (fallback.ok) {
         return {
@@ -123,10 +132,9 @@ export class StorageService {
       `${root}/storage/v1/object/sign/${this.bucket}/${this.encodedPath(path)}`,
       {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${key}`,
+        headers: this.authHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({ expiresIn }),
       },
     );
@@ -151,7 +159,7 @@ export class StorageService {
     if (!base || !key) return;
     await fetch(this.objectUrl(path), {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${key}` },
+      headers: this.authHeaders(),
     });
   }
 }

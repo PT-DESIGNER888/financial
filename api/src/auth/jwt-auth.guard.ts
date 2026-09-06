@@ -29,7 +29,11 @@ export class JwtAuthGuard implements CanActivate {
     if (isPublic) return true;
 
     const req = context.switchToHttp().getRequest<AuthedRequest>();
-    const token = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+    const header = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+    const queryToken = typeof req.query.access_token === 'string'
+      ? req.query.access_token
+      : '';
+    const token = header || queryToken;
     if (!token) throw new UnauthorizedException();
     try {
       req.user = await this.auth.verifyAccess(token);
