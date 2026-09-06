@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { IconPlus } from '@/components/icons';
 import { confirmDialog } from '@/lib/confirm-store';
@@ -312,11 +312,6 @@ function AttachmentGallery({
   );
 }
 
-function attachmentSrcPath(attachment: Attachment): string {
-  if (attachment.id.startsWith('sample-')) return attachment.url;
-  return `/attachments/${attachment.id}/file`;
-}
-
 function AttachmentImage({
   attachment,
   alt,
@@ -326,35 +321,44 @@ function AttachmentImage({
   alt: string;
   className?: string;
 }) {
-  const path = attachmentSrcPath(attachment);
-  const local = path.startsWith('/') && !path.startsWith('/attachments/');
-  const [src, setSrc] = useState<string | null>(local ? path : null);
+  const isSample = attachment.id.startsWith('sample-');
+  const [src, setSrc] = useState(attachment.url);
   const [failed, setFailed] = useState(false);
+  const triedApi = useRef(false);
+  const blobSrc = useRef<string | null>(null);
 
   useEffect(() => {
-    if (local) {
-      setSrc(path);
-      setFailed(false);
+    triedApi.current = false;
+    if (blobSrc.current) {
+      URL.revokeObjectURL(blobSrc.current);
+      blobSrc.current = null;
+    }
+    setSrc(attachment.url);
+    setFailed(false);
+    return () => {
+      if (blobSrc.current) {
+        URL.revokeObjectURL(blobSrc.current);
+        blobSrc.current = null;
+      }
+    };
+  }, [attachment.id, attachment.url]);
+
+  const tryApiFile = async () => {
+    if (isSample || triedApi.current) {
+      setFailed(true);
       return;
     }
-    let objectUrl: string | undefined;
-    let cancelled = false;
-    setSrc(null);
-    setFailed(false);
-    void fetchAuthedBlob(path)
-      .then((blob) => {
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setSrc(objectUrl);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [local, path]);
+    triedApi.current = true;
+    try {
+      const blob = await fetchAuthedBlob(`/attachments/${attachment.id}/file`);
+      const next = URL.createObjectURL(blob);
+      if (blobSrc.current) URL.revokeObjectURL(blobSrc.current);
+      blobSrc.current = next;
+      setSrc(next);
+    } catch {
+      setFailed(true);
+    }
+  };
 
   if (failed) {
     return (
@@ -365,14 +369,7 @@ function AttachmentImage({
       </div>
     );
   }
-  if (!src) {
-    return (
-      <div
-        aria-hidden
-        className={`animate-pulse bg-slate-100 dark:bg-gray-800 ${className ?? ''}`}
-      />
-    );
-  }
+
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
@@ -380,6 +377,7 @@ function AttachmentImage({
       alt={alt}
       className={className}
       referrerPolicy="no-referrer"
+      onError={() => void tryApiFile()}
     />
   );
 }

@@ -40,11 +40,17 @@ export class AttachmentsController {
   }
 
   @Get('debtors/:id/attachments')
-  list(@Param('id') id: string) {
-    return this.attachments.find({
+  async list(@Param('id') id: string) {
+    const rows = await this.attachments.find({
       where: { debtorId: id },
       order: { createdAt: 'DESC' },
     });
+    return Promise.all(
+      rows.map(async (a) => {
+        const signed = await this.storage.signedUrl(a.path);
+        return { ...a, url: signed ?? a.url };
+      }),
+    );
   }
 
   /** ส่งไฟล์ให้หน้าเว็บหลังล็อกอิน — ไม่พึ่งลิงก์ public ของบัคเก็ต */

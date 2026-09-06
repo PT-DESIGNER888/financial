@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { resolveSignedUrl } from './storage-url';
 
 /**
  * อัปโหลดไฟล์ขึ้น Supabase Storage ผ่าน REST (ไม่พึ่ง SDK)
@@ -107,6 +108,36 @@ export class StorageService {
     }
 
     throw new NotFoundException('ไม่พบไฟล์ในคลังรูป');
+  }
+
+  /** ลิงก์ชั่วคราว เปิดได้แม้บัคเก็ตเป็น private — ใช้โชว์รูปในหน้าเว็บ */
+  async signedUrl(
+    path: string,
+    expiresIn = 60 * 60 * 12,
+  ): Promise<string | null> {
+    const base = this.config.get<string>('SUPABASE_URL');
+    const key = this.config.get<string>('SUPABASE_SERVICE_KEY');
+    if (!base || !key) return null;
+    const root = base.replace(/\/$/, '');
+    const res = await fetch(
+      `${root}/storage/v1/object/sign/${this.bucket}/${this.encodedPath(path)}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ expiresIn }),
+      },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      signedURL?: string;
+      signedUrl?: string;
+    };
+    const signed = data.signedURL ?? data.signedUrl;
+    if (!signed) return null;
+    return resolveSignedUrl(root, signed);
   }
 
   private publicUrl(path: string): string {
