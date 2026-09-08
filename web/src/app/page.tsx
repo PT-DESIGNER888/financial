@@ -16,13 +16,20 @@ import {
   IconReceive,
   IconUsers,
 } from '@/components/icons';
+import { CombinedArrearsModal } from '@/components/combined-arrears-modal';
 import { CombinedReceiveModal } from '@/components/combined-receive-modal';
 import { PaymentModal } from '@/components/payment-modal';
 import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht, cycleLabel, thaiDateLong, todayISO } from '@/lib/format';
-import { useToday } from '@/lib/hooks/useDashboard';
-import { PaymentType, type TodayDebtor, type TodayItem } from '@/lib/types';
+import { useArrears, useToday } from '@/lib/hooks/useDashboard';
+import type { ArrearsReceiveItem } from '@/lib/arrears-receive';
+import {
+  PaymentType,
+  type ArrearsDebtor,
+  type TodayDebtor,
+  type TodayItem,
+} from '@/lib/types';
 
 export default function TodayPage() {
   return (
@@ -41,8 +48,10 @@ interface PayTarget {
 function TodayView() {
   const [date, setDate] = useState(todayISO());
   const { data, error, isFetching, refetch } = useToday(date);
+  const { data: arrearsData } = useArrears();
   const [paying, setPaying] = useState<PayTarget | null>(null);
   const [combining, setCombining] = useState<TodayDebtor | null>(null);
+  const [arrearsGroup, setArrearsGroup] = useState<TodayDebtor | null>(null);
   const [q, setQ] = useState('');
 
   const totals = data?.totals;
@@ -143,6 +152,8 @@ function TodayView() {
               date={date}
               onPay={setPaying}
               onCombined={setCombining}
+              onArrears={setArrearsGroup}
+              arrearsDebtors={arrearsData?.arrears.debtors}
             />
           )}
 
@@ -154,6 +165,8 @@ function TodayView() {
               date={date}
               onPay={setPaying}
               onCombined={setCombining}
+              onArrears={setArrearsGroup}
+              arrearsDebtors={arrearsData?.arrears.debtors}
               done
             />
           )}
@@ -199,6 +212,16 @@ function TodayView() {
           paidDate={date}
           onClose={() => setCombining(null)}
           onSaved={() => setCombining(null)}
+        />
+      )}
+
+      {arrearsGroup && (
+        <CombinedArrearsModal
+          debtorName={arrearsGroup.debtorName}
+          items={fullArrearsItems(arrearsGroup, arrearsData?.arrears.debtors)}
+          paidDate={date}
+          onClose={() => setArrearsGroup(null)}
+          onSaved={() => setArrearsGroup(null)}
         />
       )}
     </div>
@@ -273,6 +296,35 @@ function StatCell({
   );
 }
 
+function arrearsItemsOf(group: TodayDebtor): ArrearsReceiveItem[] {
+  return group.items
+    .filter((it) => it.arrears > 0)
+    .map((it) => ({
+      loanId: it.loanId,
+      contractNumber: it.contractNumber,
+      status: it.status,
+      amount: it.arrears,
+      cycle: it.cycle,
+    }));
+}
+
+/** หน้าเก็บวันนี้มีแค่สัญญาที่ถึงกำหนดวันนั้น — ดึงยอดค้างครบทุกสัญญาจากหน้ายอดค้าง */
+function fullArrearsItems(
+  group: TodayDebtor,
+  arrearsDebtors?: ArrearsDebtor[],
+): ArrearsReceiveItem[] {
+  const full = arrearsDebtors?.find((d) => d.debtorId === group.debtorId);
+  if (full && full.rows.length > 0) {
+    return full.rows.map((r) => ({
+      loanId: r.loanId,
+      contractNumber: r.contractNumber,
+      status: r.status,
+      amount: r.amount,
+    }));
+  }
+  return arrearsItemsOf(group);
+}
+
 function DebtorSection({
   title,
   count,
@@ -280,6 +332,8 @@ function DebtorSection({
   date,
   onPay,
   onCombined,
+  onArrears,
+  arrearsDebtors,
   done,
 }: {
   title: string;
@@ -288,6 +342,8 @@ function DebtorSection({
   date: string;
   onPay: (t: PayTarget) => void;
   onCombined: (g: TodayDebtor) => void;
+  onArrears: (g: TodayDebtor) => void;
+  arrearsDebtors?: ArrearsDebtor[];
   done?: boolean;
 }) {
   return (
@@ -308,6 +364,10 @@ function DebtorSection({
             date={date}
             onPay={onPay}
             onCombined={onCombined}
+            onArrears={onArrears}
+            arrearsTotal={
+              arrearsDebtors?.find((d) => d.debtorId === g.debtorId)?.total
+            }
             done={done}
           />
         ))}
@@ -322,12 +382,16 @@ function DebtorCard({
   date,
   onPay,
   onCombined,
+  onArrears,
+  arrearsTotal,
   done,
 }: {
   group: TodayDebtor;
   date: string;
   onPay: (t: PayTarget) => void;
   onCombined: (g: TodayDebtor) => void;
+  onArrears: (g: TodayDebtor) => void;
+  arrearsTotal?: number;
   done?: boolean;
 }) {
   const single = group.items.length === 1;
@@ -397,25 +461,33 @@ function DebtorCard({
           )}
         </div>
 
-        {group.arrears > 0 && (
-          <Link
-            href="/arrears"
-            className="flex items-center justify-between gap-2 rounded-xl border border-red-100 bg-red-50/60 px-3.5 py-2.5 text-sm transition-colors hover:bg-red-50 dark:border-red-500/20 dark:bg-red-500/10"
+        {(arrearsTotal ?? group.arrears) > 0 && (
+          <button
+            type="button"
+            onClick={() => onArrears(group)}
+            className="flex w-full items-center justify-between gap-2 rounded-xl border border-red-100 bg-red-50/60 px-3.5 py-2.5 text-left text-sm transition-colors hover:bg-red-50 dark:border-red-500/20 dark:bg-red-500/10 dark:hover:bg-red-500/15"
           >
-            <span className="inline-flex items-center gap-1.5 text-red-700 dark:text-red-400">
+            <span className="inline-flex min-w-0 items-center gap-1.5 text-red-700 dark:text-red-400">
               <IconOverdue className="size-4 shrink-0 stroke-[1.75]" />
-              มียอดค้างเก่า
-              <span className="text-red-600/70 dark:text-red-400/70">
-                (ไม่รวมยอดวันนี้)
+              <span className="min-w-0">
+                มียอดค้างเก่า
+                <span className="ml-1 text-red-600/70 dark:text-red-400/70">
+                  (ไม่รวมยอดวันนี้)
+                </span>
               </span>
             </span>
-            <span
-              data-money
-              className="font-semibold text-red-700 tabular-nums dark:text-red-400"
-            >
-              ฿{baht(group.arrears)}
+            <span className="shrink-0 text-right">
+              <span
+                data-money
+                className="block font-semibold text-red-700 tabular-nums dark:text-red-400"
+              >
+                ฿{baht(arrearsTotal ?? group.arrears)}
+              </span>
+              <span className="mt-0.5 block text-[12px] font-semibold text-red-700/80 dark:text-red-400/80">
+                รับรวม
+              </span>
             </span>
-          </Link>
+          </button>
         )}
 
         {!single && (

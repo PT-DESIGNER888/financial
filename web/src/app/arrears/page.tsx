@@ -3,11 +3,13 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { AuthGate } from '@/components/auth-gate';
+import { CombinedArrearsModal } from '@/components/combined-arrears-modal';
 import { SelectMenu, TextInput } from '@/components/form';
 import { IconAlert, IconBan, IconCoins, IconOut } from '@/components/icons';
 import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
-import { baht, thaiDate } from '@/lib/format';
+import type { ArrearsReceiveItem } from '@/lib/arrears-receive';
+import { baht, thaiDate, todayISO } from '@/lib/format';
 import { useArrears } from '@/lib/hooks/useDashboard';
 import type { ArrearsDebtor, ArrearsRow, ArrearsSection } from '@/lib/types';
 
@@ -50,6 +52,7 @@ function ArrearsView() {
   const [q, setQ] = useState('');
   const [tab, setTab] = useState<ArrearsTab>('ARREARS');
   const [sort, setSort] = useState<ArrearsSort>('TOTAL_DESC');
+  const [receiving, setReceiving] = useState<ArrearsDebtor | null>(null);
 
   if (error)
     return (
@@ -205,12 +208,34 @@ function ArrearsView() {
                 key={d.debtorId}
                 debtor={d}
                 tone={tab === 'ARREARS' ? 'danger' : 'neutral'}
+                onReceive={
+                  tab === 'ARREARS' ? () => setReceiving(d) : undefined
+                }
               />
             ))}
           </div>
         ))}
+
+      {receiving && (
+        <CombinedArrearsModal
+          debtorName={receiving.debtorName}
+          items={toReceiveItems(receiving)}
+          paidDate={todayISO()}
+          onClose={() => setReceiving(null)}
+          onSaved={() => setReceiving(null)}
+        />
+      )}
     </div>
   );
+}
+
+function toReceiveItems(debtor: ArrearsDebtor): ArrearsReceiveItem[] {
+  return debtor.rows.map((r) => ({
+    loanId: r.loanId,
+    contractNumber: r.contractNumber,
+    status: r.status,
+    amount: r.amount,
+  }));
 }
 
 function sortDebtors(debtors: ArrearsDebtor[], sort: ArrearsSort) {
@@ -283,33 +308,48 @@ function Stat({
 function DebtorCard({
   debtor,
   tone,
+  onReceive,
 }: {
   debtor: ArrearsDebtor;
   tone: 'danger' | 'neutral';
+  onReceive?: () => void;
 }) {
   return (
-    <article className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">
-      <Link
-        href={`/debtors/${debtor.debtorId}`}
-        className="group flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3.5 transition-colors hover:bg-slate-50 dark:border-gray-800 dark:hover:bg-gray-800/60"
-      >
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate text-base font-semibold text-slate-900 group-hover:text-primary dark:text-white">
-            {debtor.debtorName}
-          </span>
-          <IconOut className="size-4 shrink-0 stroke-[1.5] text-slate-400" />
-        </span>
-        <span
-          data-money
-          className={`shrink-0 text-xl font-bold tabular-nums ${
-            tone === 'danger'
-              ? 'text-red-700 dark:text-red-400'
-              : 'text-slate-900 dark:text-white'
-          }`}
+    <article className="flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3.5 dark:border-gray-800">
+        <Link
+          href={`/debtors/${debtor.debtorId}`}
+          className="group min-w-0 rounded-lg text-left"
         >
-          ฿{baht(debtor.total)}
-        </span>
-      </Link>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="min-w-0 truncate text-base font-semibold text-slate-900 group-hover:text-primary dark:text-white">
+              {debtor.debtorName}
+            </span>
+            <IconOut className="size-4 shrink-0 stroke-[1.5] text-slate-400" />
+          </span>
+        </Link>
+        <div className="flex shrink-0 flex-col items-end">
+          <span
+            data-money
+            className={`text-xl font-bold tabular-nums ${
+              tone === 'danger'
+                ? 'text-red-700 dark:text-red-400'
+                : 'text-slate-900 dark:text-white'
+            }`}
+          >
+            ฿{baht(debtor.total)}
+          </span>
+          {onReceive && (
+            <button
+              type="button"
+              onClick={onReceive}
+              className="mt-0.5 text-[13px] font-semibold text-primary hover:underline"
+            >
+              รับรวม
+            </button>
+          )}
+        </div>
+      </div>
 
       <ul className="divide-y divide-slate-100 px-4 dark:divide-gray-800">
         {debtor.rows.map((r) => (

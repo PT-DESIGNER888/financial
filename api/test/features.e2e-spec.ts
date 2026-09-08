@@ -227,6 +227,68 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
     expect(b.outstandingPrincipal).toBe(5_000); // ต้นไม่ลด
   });
 
+  it('รับรวมยอดค้างของลูกหนี้คนเดียว — หลายยอดกู้ ต้นไม่ลด', async () => {
+    const debtorId = await newDebtor('รับรวมค้าง');
+    const a = await http()
+      .post('/loans')
+      .set(auth())
+      .send({
+        debtorId,
+        principalOriginal: 5_000,
+        outstandingPrincipal: 5_000,
+        arrears: 300,
+        interestRatePercent: 1,
+        cycle: 'DAILY',
+      })
+      .expect(201);
+    const b = await http()
+      .post('/loans')
+      .set(auth())
+      .send({
+        debtorId,
+        principalOriginal: 8_000,
+        outstandingPrincipal: 8_000,
+        arrears: 200,
+        interestRatePercent: 1,
+        cycle: 'DAILY',
+      })
+      .expect(201);
+    const aId = (a.body as { id: string }).id;
+    const bId = (b.body as { id: string }).id;
+
+    const dash = await http().get('/dashboard/arrears').set(auth()).expect(200);
+    const grouped = (
+      dash.body as {
+        arrears: {
+          debtors: { debtorId: string; total: number; rows: { loanId: string; amount: number }[] }[];
+        };
+      }
+    ).arrears.debtors.find((d) => d.debtorId === debtorId);
+    expect(grouped?.total).toBe(500);
+    expect(grouped?.rows).toHaveLength(2);
+
+    for (const row of grouped!.rows) {
+      await http()
+        .post('/payments')
+        .set(auth())
+        .send({ loanId: row.loanId, amount: row.amount, paymentType: 'ARREARS' })
+        .expect(201);
+    }
+
+    const afterA = await http().get(`/loans/${aId}`).set(auth()).expect(200);
+    const afterB = await http().get(`/loans/${bId}`).set(auth()).expect(200);
+    expect((afterA.body as { arrears: number; outstandingPrincipal: number }).arrears).toBe(0);
+    expect((afterB.body as { arrears: number; outstandingPrincipal: number }).arrears).toBe(0);
+    expect((afterA.body as { outstandingPrincipal: number }).outstandingPrincipal).toBe(5_000);
+    expect((afterB.body as { outstandingPrincipal: number }).outstandingPrincipal).toBe(8_000);
+
+    const dashAfter = await http().get('/dashboard/arrears').set(auth()).expect(200);
+    const gone = (
+      dashAfter.body as { arrears: { debtors: { debtorId: string }[] } }
+    ).arrears.debtors.find((d) => d.debtorId === debtorId);
+    expect(gone).toBeUndefined();
+  });
+
   it('ข้อ 2: ชำระดอกล่วงหน้า 3 รอบ — วันถัดๆ ไปขึ้นเก็บครบ', async () => {
     const debtorId = await newDebtor('ซี');
     const loan = await http()
