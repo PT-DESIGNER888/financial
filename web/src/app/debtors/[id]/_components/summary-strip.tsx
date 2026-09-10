@@ -1,35 +1,46 @@
 'use client';
 
-import { baht, thaiDate } from '@/lib/format';
-import { useAllLoans } from '@/lib/hooks/useLoans';
-import { LoanStatus } from '@/lib/types';
+import { baht, thaiDate, todayISO } from '@/lib/format';
+import { LoanStatus, type Loan } from '@/lib/types';
 import { SummaryChip } from './ui';
 
-/** แถบสรุปรวมทุกสัญญาของลูกหนี้ — ใช้ข้อมูลคำนวณจาก GET /loans (ตัวเดียวกับหน้าสัญญาเงินกู้) */
-export function DebtorSummaryStrip({ debtorId }: { debtorId: string }) {
-  const { data: loans } = useAllLoans();
-  if (!loans) return null;
-  const mine = loans.filter((l) => l.debtorId === debtorId);
-  const open = mine.filter(
+function remainingOf(loan: Loan): number {
+  if (
+    loan.status === LoanStatus.CLOSED ||
+    loan.status === LoanStatus.BAD_DEBT
+  )
+    return 0;
+  if (
+    loan.status === LoanStatus.DEAD ||
+    loan.status === LoanStatus.INSTALLMENT
+  )
+    return loan.deadBalance ?? 0;
+  return loan.outstandingPrincipal + loan.arrears;
+}
+
+/** แถบสรุปรวมทุกสัญญาของลูกหนี้ — ใช้ยอดจากหน้าลูกหนี้ ไม่ดึงสัญญาทั้งระบบซ้ำ */
+export function DebtorSummaryStrip({ loans }: { loans: Loan[] }) {
+  const today = todayISO();
+  const open = loans.filter(
     (l) =>
       l.status === LoanStatus.ACTIVE ||
       l.status === LoanStatus.DEAD ||
       l.status === LoanStatus.INSTALLMENT,
   );
-  if (mine.length === 0) return null;
-  const remaining = open.reduce((s, l) => s + l.remaining, 0);
+  if (loans.length === 0) return null;
+  const remaining = open.reduce((s, l) => s + remainingOf(l), 0);
   const arrears = open.reduce((s, l) => s + l.arrears, 0);
-  const overdueCount = open.filter((l) => l.overdue).length;
+  const overdueCount = open.filter((l) => l.arrears > 0).length;
   const nextDue = open
-    .map((l) => l.nextDueDate)
-    .filter((d): d is string => !!d)
+    .flatMap((l) => [l.interestDueDate, l.principalDueDate])
+    .filter((d): d is string => !!d && d >= today)
     .sort()[0];
 
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       <SummaryChip
         label="สัญญาเปิดอยู่"
-        value={`${open.length}/${mine.length}`}
+        value={`${open.length}/${loans.length}`}
       />
       <SummaryChip label="ยอดคงเหลือรวม" value={`฿${baht(remaining)}`} />
       <SummaryChip

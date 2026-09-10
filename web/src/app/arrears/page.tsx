@@ -7,6 +7,7 @@ import { CombinedArrearsModal } from '@/components/combined-arrears-modal';
 import { SelectMenu, TextInput } from '@/components/form';
 import { IconAlert, IconBan, IconCoins, IconOut } from '@/components/icons';
 import { PageError } from '@/components/page-error';
+import { RefreshButton } from '@/components/refresh-button';
 import { PageSkeleton } from '@/components/skeleton';
 import type { ArrearsReceiveItem } from '@/lib/arrears-receive';
 import { baht, thaiDate, todayISO } from '@/lib/format';
@@ -48,7 +49,7 @@ const sortOptions: { value: ArrearsSort; label: string }[] = [
  * แท็บแค่สลับรายการค้างจ่าย / ยอดตาย ไม่ดึงตัวเลขไปซ้ำ
  */
 function ArrearsView() {
-  const { data, error, refetch } = useArrears();
+  const { data, error, isFetching, refetch } = useArrears();
   const [q, setQ] = useState('');
   const [tab, setTab] = useState<ArrearsTab>('ARREARS');
   const [sort, setSort] = useState<ArrearsSort>('TOTAL_DESC');
@@ -84,15 +85,21 @@ function ArrearsView() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="sr-only">ยอดค้าง</h1>
-        <p className="text-sm leading-relaxed text-slate-500 dark:text-gray-400">
-          ใครค้างอยู่บ้าง คนละเท่าไหร่ — แยกจาก
-          <Link href="/" className="mx-1 font-medium text-primary">
-            หน้าเก็บวันนี้
-          </Link>
-          เพื่อให้ดูง่าย
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="sr-only">ยอดค้าง</h1>
+          <p className="text-sm leading-relaxed text-slate-500 dark:text-gray-400">
+            ใครค้างอยู่บ้าง คนละเท่าไหร่ — แยกจาก
+            <Link href="/" className="mx-1 font-medium text-primary">
+              หน้าเก็บวันนี้
+            </Link>
+            เพื่อให้ดูง่าย
+          </p>
+        </div>
+        <RefreshButton
+          onClick={() => void refetch()}
+          busy={isFetching && !!data}
+        />
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-200/80 dark:border-gray-800 dark:bg-gray-800">

@@ -19,6 +19,7 @@ import {
 import { CombinedArrearsModal } from '@/components/combined-arrears-modal';
 import { CombinedReceiveModal } from '@/components/combined-receive-modal';
 import { PaymentModal } from '@/components/payment-modal';
+import { RefreshButton } from '@/components/refresh-button';
 import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
 import { baht, cycleLabel, thaiDateLong, todayISO } from '@/lib/format';
@@ -48,10 +49,10 @@ interface PayTarget {
 function TodayView() {
   const [date, setDate] = useState(todayISO());
   const { data, error, isFetching, refetch } = useToday(date);
-  const { data: arrearsData } = useArrears();
   const [paying, setPaying] = useState<PayTarget | null>(null);
   const [combining, setCombining] = useState<TodayDebtor | null>(null);
   const [arrearsGroup, setArrearsGroup] = useState<TodayDebtor | null>(null);
+  const { data: arrearsData } = useArrears(!!arrearsGroup);
   const [q, setQ] = useState('');
 
   const totals = data?.totals;
@@ -63,15 +64,21 @@ function TodayView() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="sr-only">เก็บวันนี้</h1>
-        <p className="text-sm leading-relaxed text-slate-500 dark:text-gray-400">
-          {thaiDateLong(date)}
-          {data && !data.isToday && ' · ดูล่วงหน้า/ย้อนหลัง'} — ยอดค้างสะสมดูแยกที่หน้า
-          <Link href="/arrears" className="ml-1 font-medium text-primary">
-            ยอดค้าง
-          </Link>
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="sr-only">เก็บวันนี้</h1>
+          <p className="text-sm leading-relaxed text-slate-500 dark:text-gray-400">
+            {thaiDateLong(date)}
+            {data && !data.isToday && ' · ดูล่วงหน้า/ย้อนหลัง'} — ยอดค้างสะสมดูแยกที่หน้า
+            <Link href="/arrears" className="ml-1 font-medium text-primary">
+              ยอดค้าง
+            </Link>
+          </p>
+        </div>
+        <RefreshButton
+          onClick={() => void refetch()}
+          busy={isFetching && !!data}
+        />
       </div>
 
       <DayStrip value={date} onChange={setDate} />

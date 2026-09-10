@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type {
   ArrearsData,
@@ -24,20 +24,28 @@ export interface TodayData {
   allOpen: number;
 }
 
+const dashboardQuery = {
+  staleTime: 20_000,
+  placeholderData: keepPreviousData,
+};
+
 /** รายการเก็บของวันที่เลือก — ไม่ส่ง date = วันนี้ */
 export function useToday(date?: string) {
   return useQuery({
     queryKey: qk.today(date),
     queryFn: () =>
       api<TodayData>(`/dashboard/today${date ? `?date=${date}` : ''}`),
+    ...dashboardQuery,
   });
 }
 
 /** ยอดค้าง + ยอดตาย (แยกจากหน้าเก็บวันนี้) */
-export function useArrears() {
+export function useArrears(enabled = true) {
   return useQuery({
     queryKey: qk.arrears,
     queryFn: () => api<ArrearsData>('/dashboard/arrears'),
+    enabled,
+    ...dashboardQuery,
   });
 }
 

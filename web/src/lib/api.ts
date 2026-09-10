@@ -60,6 +60,7 @@ export async function api<T>(
   try {
     res = await fetch(`${BASE}${path}`, {
       ...options,
+      cache: options.cache ?? 'no-store',
       headers: {
         'Content-Type': 'application/json',
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),

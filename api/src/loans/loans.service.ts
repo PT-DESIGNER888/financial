@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { ActivityService } from '../activity/activity.service';
 import { addDays, diffDays, todayStr } from '../common/date.util';
 import {
@@ -687,8 +687,14 @@ export class LoansService {
   }
 
   async accrueAllActive(): Promise<Loan[]> {
+    const yesterday = addDays(todayStr(), -1);
+    const today = todayStr();
+    // ข้ามยอดที่คิดค้างถึงเมื่อวานแล้ว — กันโหลด payments/cycles ทั้งตารางทุกครั้งที่เปิดแดชบอร์ด
     const active = await this.loans.find({
-      where: { status: LoanStatus.ACTIVE },
+      where: [
+        { status: LoanStatus.ACTIVE, accruedThrough: LessThan(yesterday) },
+        { status: LoanStatus.ACTIVE, interestDueDate: LessThan(today) },
+      ],
       relations: { debtor: true, payments: true, cycles: true },
     });
     return Promise.all(active.map((l) => this.accrue(l)));
