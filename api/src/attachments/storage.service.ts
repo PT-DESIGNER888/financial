@@ -38,7 +38,9 @@ export class StorageService {
   }
 
   /** Supabase บังคับทั้ง Authorization และ apikey — ขาดตัวใดตัวหนึ่งมัก 401 */
-  private authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  private authHeaders(
+    extra: Record<string, string> = {},
+  ): Record<string, string> {
     const key = this.config.get<string>('SUPABASE_SERVICE_KEY')!;
     return {
       Authorization: `Bearer ${key}`,

@@ -3,7 +3,12 @@ export function sniffContentType(
   buffer: Buffer,
   fallback = 'application/octet-stream',
 ): string {
-  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+  if (
+    buffer.length >= 3 &&
+    buffer[0] === 0xff &&
+    buffer[1] === 0xd8 &&
+    buffer[2] === 0xff
+  ) {
     return 'image/jpeg';
   }
   if (
@@ -15,7 +20,10 @@ export function sniffContentType(
   ) {
     return 'image/png';
   }
-  if (buffer.length >= 4 && buffer.subarray(0, 4).toString('ascii') === 'GIF8') {
+  if (
+    buffer.length >= 4 &&
+    buffer.subarray(0, 4).toString('ascii') === 'GIF8'
+  ) {
     return 'image/gif';
   }
   if (
@@ -25,7 +33,10 @@ export function sniffContentType(
   ) {
     return 'image/webp';
   }
-  if (buffer.length >= 4 && buffer.subarray(0, 4).toString('ascii') === '%PDF') {
+  if (
+    buffer.length >= 4 &&
+    buffer.subarray(0, 4).toString('ascii') === '%PDF'
+  ) {
     return 'application/pdf';
   }
   return fallback.split(';')[0].trim() || 'application/octet-stream';

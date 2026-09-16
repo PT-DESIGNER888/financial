@@ -30,9 +30,8 @@ export class JwtAuthGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest<AuthedRequest>();
     const header = (req.headers.authorization ?? '').replace(/^Bearer /, '');
-    const queryToken = typeof req.query.access_token === 'string'
-      ? req.query.access_token
-      : '';
+    const queryToken =
+      typeof req.query.access_token === 'string' ? req.query.access_token : '';
     const token = header || queryToken;
     if (!token) throw new UnauthorizedException();
     try {

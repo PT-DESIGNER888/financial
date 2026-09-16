@@ -260,7 +260,11 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
     const grouped = (
       dash.body as {
         arrears: {
-          debtors: { debtorId: string; total: number; rows: { loanId: string; amount: number }[] }[];
+          debtors: {
+            debtorId: string;
+            total: number;
+            rows: { loanId: string; amount: number }[];
+          }[];
         };
       }
     ).arrears.debtors.find((d) => d.debtorId === debtorId);
@@ -271,18 +275,35 @@ describe('ฟีเจอร์ใหม่ (e2e)', () => {
       await http()
         .post('/payments')
         .set(auth())
-        .send({ loanId: row.loanId, amount: row.amount, paymentType: 'ARREARS' })
+        .send({
+          loanId: row.loanId,
+          amount: row.amount,
+          paymentType: 'ARREARS',
+        })
         .expect(201);
     }
 
     const afterA = await http().get(`/loans/${aId}`).set(auth()).expect(200);
     const afterB = await http().get(`/loans/${bId}`).set(auth()).expect(200);
-    expect((afterA.body as { arrears: number; outstandingPrincipal: number }).arrears).toBe(0);
-    expect((afterB.body as { arrears: number; outstandingPrincipal: number }).arrears).toBe(0);
-    expect((afterA.body as { outstandingPrincipal: number }).outstandingPrincipal).toBe(5_000);
-    expect((afterB.body as { outstandingPrincipal: number }).outstandingPrincipal).toBe(8_000);
+    expect(
+      (afterA.body as { arrears: number; outstandingPrincipal: number })
+        .arrears,
+    ).toBe(0);
+    expect(
+      (afterB.body as { arrears: number; outstandingPrincipal: number })
+        .arrears,
+    ).toBe(0);
+    expect(
+      (afterA.body as { outstandingPrincipal: number }).outstandingPrincipal,
+    ).toBe(5_000);
+    expect(
+      (afterB.body as { outstandingPrincipal: number }).outstandingPrincipal,
+    ).toBe(8_000);
 
-    const dashAfter = await http().get('/dashboard/arrears').set(auth()).expect(200);
+    const dashAfter = await http()
+      .get('/dashboard/arrears')
+      .set(auth())
+      .expect(200);
     const gone = (
       dashAfter.body as { arrears: { debtors: { debtorId: string }[] } }
     ).arrears.debtors.find((d) => d.debtorId === debtorId);

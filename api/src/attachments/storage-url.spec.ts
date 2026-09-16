@@ -19,7 +19,10 @@ describe('resolveSignedUrl', () => {
 
   it('ไม่ซ้ำ /storage/v1 ถ้ามีมาแล้ว', () => {
     expect(
-      resolveSignedUrl(root, '/storage/v1/object/sign/attachments/a.jpg?token=1'),
+      resolveSignedUrl(
+        root,
+        '/storage/v1/object/sign/attachments/a.jpg?token=1',
+      ),
     ).toBe(
       'https://xxxx.supabase.co/storage/v1/object/sign/attachments/a.jpg?token=1',
     );

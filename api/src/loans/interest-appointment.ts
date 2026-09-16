@@ -98,9 +98,7 @@ export function quoteInterestAppointment(input: {
     step: input.step,
     interestForDue: input.interestForDue,
   });
-  const computedTotal = round2(
-    cycles.reduce((s, c) => s + c.remaining, 0),
-  );
+  const computedTotal = round2(cycles.reduce((s, c) => s + c.remaining, 0));
   const paid = paidTowardAppointment(
     input.payments,
     input.windowStart,
@@ -127,8 +125,7 @@ export function settleAppointmentGroup(input: {
   const unpaid = Math.max(0, round2(input.groupDue - input.groupPaid));
   const patches = input.covered.map((c, i) => ({
     id: c.id,
-    accruedAmount:
-      i === input.covered.length - 1 ? unpaid : 0,
+    accruedAmount: i === input.covered.length - 1 ? unpaid : 0,
   }));
   return { addedArrears: unpaid, patches };
 }
@@ -142,10 +139,7 @@ export function collectionInterestOnDay(input: {
   weeklyDue: number;
   weeklyRemaining: number;
 }): { dueInterest: number; remainingInterest: number } {
-  if (
-    input.interestDueDate &&
-    input.day === input.interestDueDate
-  ) {
+  if (input.interestDueDate && input.day === input.interestDueDate) {
     return {
       dueInterest: input.agreedDue,
       remainingInterest: input.agreedRemaining,

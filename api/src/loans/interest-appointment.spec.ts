@@ -1,4 +1,11 @@
-import { quoteInterestAppointment, settleAppointmentGroup, collectionInterestOnDay, hidesWeeklyDueOn, isAppointmentOpen, projectCyclesUntil } from './interest-appointment';
+import {
+  quoteInterestAppointment,
+  settleAppointmentGroup,
+  collectionInterestOnDay,
+  hidesWeeklyDueOn,
+  isAppointmentOpen,
+  projectCyclesUntil,
+} from './interest-appointment';
 
 const interest = (n: number) => ({ interest: n, remaining: n });
 
@@ -63,9 +70,7 @@ describe('นัดชำระดอก — คิดรายรอบ เก�
       step: 7,
       windowStart: '2026-08-27',
       agreedAmount: null,
-      payments: [
-        { paidDate: '2026-09-11', interestPaid: 400 },
-      ],
+      payments: [{ paidDate: '2026-09-11', interestPaid: 400 }],
       interestForDue: () => interest(400),
     });
     expect(q.paid).toBe(400);
