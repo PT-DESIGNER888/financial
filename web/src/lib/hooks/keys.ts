@@ -26,14 +26,30 @@ export const qk = {
 };
 
 /**
- * ล้าง cache ทุกอย่างที่ยอดเงินกระทบ — ใช้หลัง mutation ที่เปลี่ยนยอด
- * (รับเงิน/ตัดต้น/ปรับยอด/ปิด/หนี้สูญ/เปิดคืน/เปิดยอด/ลบ)
+ * หลังรับเงิน / ลบรายการจ่าย / ชำระล่วงหน้า —
+ * รีเฟรชเฉพาะหน้าที่ยอดเงินเปลี่ยนทันที ไม่บังคับดึง finance ทั้งก้อน
+ * (finance ถูก mark stale — refetch เมื่อเปิดหน้าการเงิน)
+ */
+export function invalidateAfterPayment(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: ['dashboard'] });
+  void qc.invalidateQueries({ queryKey: ['loan'] });
+  void qc.invalidateQueries({ queryKey: ['debtor'] });
+  void qc.invalidateQueries({ queryKey: qk.debtors });
+  void qc.invalidateQueries({ queryKey: ['activities'] });
+  void qc.invalidateQueries({ queryKey: ['payments'] });
+  void qc.invalidateQueries({ queryKey: ['finance'], refetchType: 'none' });
+}
+
+/**
+ * โครงสร้างสัญญา/ลูกหนี้เปลี่ยน (เปิดยอด ปิด รียอด ตัดสูญ ลบ) —
+ * ต้องรีเฟรชภาพรวมรวมถึงการเงิน
  */
 export function invalidateMoney(qc: QueryClient) {
-  qc.invalidateQueries({ queryKey: ['debtors'] });
-  qc.invalidateQueries({ queryKey: ['debtor'] });
-  qc.invalidateQueries({ queryKey: ['loan'] });
-  qc.invalidateQueries({ queryKey: ['dashboard'] });
-  qc.invalidateQueries({ queryKey: ['finance'] });
-  qc.invalidateQueries({ queryKey: ['activities'] });
+  void qc.invalidateQueries({ queryKey: ['debtors'] });
+  void qc.invalidateQueries({ queryKey: ['debtor'] });
+  void qc.invalidateQueries({ queryKey: ['loan'] });
+  void qc.invalidateQueries({ queryKey: ['dashboard'] });
+  void qc.invalidateQueries({ queryKey: ['finance'] });
+  void qc.invalidateQueries({ queryKey: ['activities'] });
+  void qc.invalidateQueries({ queryKey: ['payments'] });
 }

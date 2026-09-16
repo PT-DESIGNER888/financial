@@ -3,11 +3,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ActivityModule } from '../activity/activity.module';
 import { Loan } from '../entities/loan.entity';
 import { LoanCycle } from '../entities/loan-cycle.entity';
+import { Payment } from '../entities/payment.entity';
 import { LoansController } from './loans.controller';
 import { LoansService } from './loans.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Loan, LoanCycle]), ActivityModule],
+  imports: [
+    TypeOrmModule.forFeature([Loan, LoanCycle, Payment]),
+    ActivityModule,
+  ],
   controllers: [LoansController],
   providers: [LoansService],
   exports: [LoansService],

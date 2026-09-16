@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Workbook, type Worksheet } from 'exceljs';
-import { Repository } from 'typeorm';
+import { Like, Repository } from 'typeorm';
 import {
   InterestMode,
   LoanCycle,
@@ -51,7 +51,7 @@ const paymentTypeLabel: Record<PaymentType, string> = {
   ARREARS: 'เฉพาะค้าง',
 };
 
-type LoanReportRow = Awaited<ReturnType<LoansService['findAll']>>[number];
+type LoanReportRow = import('../loans/loans.service').LoanListItem;
 
 function dateValue(value: string | null): Date | null {
   if (!value) return null;
@@ -142,11 +142,24 @@ export class ExcelReportService {
       this.finance.cashPosition(),
       this.loans.findAll(),
       this.payments.find({
+        where: { paidDate: Like(`${month}%`) },
         relations: { loan: { debtor: true } },
+        relationLoadStrategy: 'query',
         order: { paidDate: 'DESC', createdAt: 'DESC' },
       }),
-      this.debtors.find({ order: { name: 'ASC' } }),
+      this.debtors.find({
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          blacklisted: true,
+          creditNote: true,
+          note: true,
+        },
+        order: { name: 'ASC' },
+      }),
     ]);
+    // กรองซ้ำใน memory — กัน mock/ไดรเวอร์ที่ไม่รองรับ LIKE เต็มรูปแบบ
     const monthPayments = payments.filter((payment) =>
       payment.paidDate.startsWith(month),
     );

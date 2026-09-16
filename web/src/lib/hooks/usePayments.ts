@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { invalidateAfterPayment } from './keys';
 import type { CurrentCycle, Payment, PaymentType } from '@/lib/types';
-import { invalidateMoney } from './keys';
+import { api } from '@/lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export interface Allocation {
   arrearsPaid: number;
@@ -33,7 +33,8 @@ export function useSuggestAllocation(
           (interestDue !== undefined ? `&interestDue=${interestDue}` : ''),
       ),
     enabled: enabled && amount > 0,
-    staleTime: 0,
+    staleTime: 10_000,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -58,7 +59,7 @@ export function useRecordPayment() {
         method: 'POST',
         body: JSON.stringify(input),
       }),
-    onSuccess: () => invalidateMoney(qc),
+    onSuccess: () => invalidateAfterPayment(qc),
   });
 }
 
@@ -91,7 +92,7 @@ export function usePrepayCycles() {
         method: 'POST',
         body: JSON.stringify(input),
       }),
-    onSuccess: () => invalidateMoney(qc),
+    onSuccess: () => invalidateAfterPayment(qc),
   });
 }
 
@@ -100,6 +101,6 @@ export function useDeletePayment() {
   return useMutation({
     mutationFn: (id: string) =>
       api<void>(`/payments/${id}`, { method: 'DELETE' }),
-    onSuccess: () => invalidateMoney(qc),
+    onSuccess: () => invalidateAfterPayment(qc),
   });
 }

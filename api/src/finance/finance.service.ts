@@ -81,14 +81,27 @@ export class FinanceService {
   // ---- เงินสดในมือ ----
   async cashPosition() {
     const { openingCash } = await this.getOpening();
-    const loans = await this.loans.find();
-    const pays = await this.payments.find();
-    const txs = await this.cashtx.find();
+    // เลือกเฉพาะคอลัมน์ที่ใช้คำนวณ — ไม่ดึงทั้งแถว
+    const loans = await this.loans.find({
+      select: {
+        id: true,
+        fromCapital: true,
+        capitalDisbursed: true,
+        principalOriginal: true,
+      },
+    });
+    const collectedRow = await this.payments
+      .createQueryBuilder('p')
+      .select('COALESCE(SUM(p.amount), 0)', 'collected')
+      .getRawOne<{ collected: string }>();
+    const collected = parseFloat(String(collectedRow?.collected ?? 0)) || 0;
+    const txs = await this.cashtx.find({
+      select: { id: true, type: true, amount: true },
+    });
 
     const disbursed = loans
       .filter((l) => l.fromCapital)
       .reduce((s, l) => s + (l.capitalDisbursed ?? l.principalOriginal), 0);
-    const collected = pays.reduce((s, p) => s + p.amount, 0);
     const sumTx = (t: CashTxType) =>
       txs.filter((x) => x.type === t).reduce((s, x) => s + x.amount, 0);
     const capitalIn = sumTx('CAPITAL_IN');
@@ -120,17 +133,28 @@ export class FinanceService {
 
   // ---- สมุดธุรกรรมรวม (ledger) ----
   async ledger(opts: { month?: string; limit?: number } = {}) {
-    const loans = await this.loans.find({ relations: { debtor: true } });
-    const pays = await this.payments.find({
-      relations: { loan: { debtor: true } },
+    const loans = await this.loans.find({
+      relations: { debtor: true },
+      relationLoadStrategy: 'query',
     });
-    const txs = await this.cashtx.find();
+    // โหลด payments แบนๆ แล้ว map ชื่อจาก loans — ไม่ join loan.debtor ซ้ำทุกแถว
+    const paysQb = this.payments.createQueryBuilder('p');
+    if (opts.month) {
+      paysQb.where('p.paidDate LIKE :m', { m: `${opts.month}%` });
+    }
+    const pays = await paysQb.getMany();
+    const txsQb = this.cashtx.createQueryBuilder('t');
+    if (opts.month) {
+      txsQb.where('t.date LIKE :m', { m: `${opts.month}%` });
+    }
+    const txs = await txsQb.getMany();
     const loanById = new Map(loans.map((l) => [l.id, l]));
 
     const entries: LedgerEntry[] = [];
 
     for (const l of loans) {
       if (l.fromCapital) {
+        if (opts.month && !l.startDate.startsWith(opts.month)) continue;
         // รียอด: เงินสดออกจริง = capitalDisbursed (ต้นใหม่ − ยอดเหลือเดิมที่ยกมา)
         const cashOut = l.capitalDisbursed ?? l.principalOriginal;
         entries.push({
@@ -184,7 +208,6 @@ export class FinanceService {
     let rows = entries.sort((a, b) =>
       a.date < b.date ? 1 : a.date > b.date ? -1 : 0,
     );
-    if (opts.month) rows = rows.filter((r) => r.date.startsWith(opts.month!));
     if (opts.limit) rows = rows.slice(0, opts.limit);
     return rows;
   }
@@ -192,39 +215,53 @@ export class FinanceService {
   // ---- รายงานรายเดือน ----
   async monthly(month: string) {
     const rows = await this.ledger({ month });
-    const pays = (await this.payments.find()).filter((p) =>
-      p.paidDate.startsWith(month),
-    );
+    const interestRow = await this.payments
+      .createQueryBuilder('p')
+      .select('COALESCE(SUM(p.interestPaid + p.arrearsPaid), 0)', 'interest')
+      .addSelect('COALESCE(SUM(p.principalPaid), 0)', 'principal')
+      .where('p.paidDate LIKE :m', { m: `${month}%` })
+      .getRawOne<{ interest: string; principal: string }>();
     const cashIn = rows.reduce((s, r) => s + r.cashIn, 0);
     const cashOut = rows.reduce((s, r) => s + r.cashOut, 0);
-    const interest = pays.reduce(
-      (s, p) => s + p.interestPaid + p.arrearsPaid,
-      0,
-    );
-    const principalBack = pays.reduce((s, p) => s + p.principalPaid, 0);
     return {
       month,
       cashIn: round2(cashIn),
       cashOut: round2(cashOut),
       net: round2(cashIn - cashOut),
-      interestEarned: round2(interest),
-      principalBack: round2(principalBack),
+      interestEarned: round2(
+        parseFloat(String(interestRow?.interest ?? 0)) || 0,
+      ),
+      principalBack: round2(
+        parseFloat(String(interestRow?.principal ?? 0)) || 0,
+      ),
       entries: rows,
     };
   }
 
   // ---- แนวโน้มเก็บเงินรายวัน (n วันล่าสุด) ----
   async dailyTrend(days = 30) {
-    const pays = await this.payments.find();
-    const byDay = new Map<string, { collected: number; interest: number }>();
-    for (const p of pays) {
-      const cur = byDay.get(p.paidDate) ?? { collected: 0, interest: 0 };
-      cur.collected += p.amount;
-      cur.interest += p.interestPaid + p.arrearsPaid;
-      byDay.set(p.paidDate, cur);
-    }
-    const out: { date: string; collected: number; interest: number }[] = [];
     const today = new Date();
+    const start = new Date(today);
+    start.setDate(start.getDate() - (days - 1));
+    const startKey = start.toISOString().slice(0, 10);
+    const rows = await this.payments
+      .createQueryBuilder('p')
+      .select('p.paidDate', 'date')
+      .addSelect('COALESCE(SUM(p.amount), 0)', 'collected')
+      .addSelect('COALESCE(SUM(p.interestPaid + p.arrearsPaid), 0)', 'interest')
+      .where('p.paidDate >= :start', { start: startKey })
+      .groupBy('p.paidDate')
+      .getRawMany<{ date: string; collected: string; interest: string }>();
+    const byDay = new Map(
+      rows.map((r) => [
+        r.date,
+        {
+          collected: parseFloat(String(r.collected)) || 0,
+          interest: parseFloat(String(r.interest)) || 0,
+        },
+      ]),
+    );
+    const out: { date: string; collected: number; interest: number }[] = [];
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);

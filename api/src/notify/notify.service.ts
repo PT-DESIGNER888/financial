@@ -48,6 +48,7 @@ export class NotifyService {
     const loans = await this.loans.find({
       where: { status: LoanStatus.ACTIVE },
       relations: { debtor: true },
+      relationLoadStrategy: 'query',
     });
     return loans
       .filter((l) => l.arrears > 0)
@@ -74,6 +75,7 @@ export class NotifyService {
         ]),
       },
       relations: { debtor: true, cycles: true, payments: true },
+      relationLoadStrategy: 'query',
     });
 
     const lines: string[] = [];

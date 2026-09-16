@@ -7,14 +7,42 @@ import type {
   LoanCycle,
   LoanCyclesInfo,
   LoanListItem,
+  LoanListPage,
 } from '@/lib/types';
-import { invalidateMoney, qk } from './keys';
+import { invalidateAfterPayment, invalidateMoney, qk } from './keys';
 
-/** สัญญาทั้งหมดพร้อมยอดสรุป — หน้า "สัญญาเงินกู้" */
-export function useAllLoans() {
+export interface LoanListParams {
+  page?: number;
+  pageSize?: number;
+  q?: string;
+  status?: string;
+}
+
+/** สัญญาทั้งหมดพร้อมยอดสรุป — หน้า "สัญญาเงินกู้" (รองรับ pagination) */
+export function useAllLoans(params: LoanListParams = {}) {
+  const page = params.page ?? 1;
+  const pageSize = params.pageSize ?? 50;
+  const q = params.q ?? '';
+  const status = params.status ?? 'ALL';
   return useQuery({
-    queryKey: qk.loans,
+    queryKey: [...qk.loans, page, pageSize, q, status] as const,
+    queryFn: () => {
+      const sp = new URLSearchParams();
+      sp.set('page', String(page));
+      sp.set('pageSize', String(pageSize));
+      if (q.trim()) sp.set('q', q.trim());
+      if (status && status !== 'ALL') sp.set('status', status);
+      return api<LoanListPage>(`/loans?${sp.toString()}`);
+    },
+  });
+}
+
+/** รายการสัญญาแบบไม่แบ่งหน้า — ใช้เมื่อต้องได้ทั้งชุด (หายาก) */
+export function useAllLoansUnpaged(enabled = true) {
+  return useQuery({
+    queryKey: [...qk.loans, 'all'] as const,
     queryFn: () => api<LoanListItem[]>('/loans'),
+    enabled,
   });
 }
 
@@ -138,8 +166,7 @@ export function useUpdateCycle() {
         body: JSON.stringify(input),
       }),
     onSuccess: () => {
-      invalidateMoney(qc);
-      qc.invalidateQueries({ queryKey: ['payments'] });
+      invalidateAfterPayment(qc);
     },
   });
 }

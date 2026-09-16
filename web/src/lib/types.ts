@@ -145,6 +145,16 @@ export interface LoanListItem {
   note: string | null;
 }
 
+/** ผล GET /loans?page=… */
+export interface LoanListPage {
+  items: LoanListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  openCount: number;
+  overdueCount: number;
+}
+
 export interface ScheduleRow {
   n: number;
   dueDate: string;

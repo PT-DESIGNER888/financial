@@ -16,17 +16,23 @@ export class DebtorsService {
   findAll() {
     return this.debtors.find({
       relations: { loans: true },
+      relationLoadStrategy: 'query',
       order: { name: 'ASC' },
     });
   }
 
   async findOne(id: string) {
+    // ไม่ใส่ order ซ้อน relation กับ relationLoadStrategy:'query' (กัน distinctAlias error)
     const debtor = await this.debtors.findOne({
       where: { id },
-      relations: { loans: { payments: true } },
-      order: { loans: { createdAt: 'DESC' } },
+      // โหลด cycles ด้วย — กัน accrue → ensureCycles ยิง N+1 ต่อสัญญา
+      relations: { loans: { payments: true, cycles: true } },
+      relationLoadStrategy: 'query',
     });
     if (!debtor) throw new NotFoundException('ไม่พบลูกหนี้');
+    debtor.loans = [...(debtor.loans ?? [])].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
     debtor.loans = await Promise.all(
       debtor.loans.map((l) => this.loansService.accrue(l)),
     );

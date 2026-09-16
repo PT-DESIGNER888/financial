@@ -8,7 +8,12 @@ import { LoansService } from './loans.service';
  * เทสเฉพาะตรรกะที่ไม่แตะฐานข้อมูล (isDueOn / cycleStatusOn)
  * — สร้าง service ด้วย repo ปลอมเพราะเมธอดเหล่านี้อ่านจาก entity ที่ส่งเข้ามาล้วนๆ
  */
-const service = new LoansService(null as never, null as never, null as never);
+const service = new LoansService(
+  null as never,
+  null as never,
+  null as never,
+  null as never,
+);
 
 const cycleRow = (dueDate: string, over: Partial<CycleRow> = {}): CycleRow =>
   ({
@@ -342,6 +347,7 @@ describe('LoansService.editTerms — แก้แผนผ่อนของย�
     const svc = new LoansService(
       repo as never,
       cycleRows as never,
+      null as never,
       {
         log: () => Promise.resolve(),
       } as never,

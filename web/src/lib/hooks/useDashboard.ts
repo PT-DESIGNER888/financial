@@ -25,7 +25,7 @@ export interface TodayData {
 }
 
 const dashboardQuery = {
-  staleTime: 20_000,
+  staleTime: 45_000,
   placeholderData: keepPreviousData,
 };
 

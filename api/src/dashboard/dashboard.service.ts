@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { todayStr } from '../common/date.util';
+import { addDays, todayStr } from '../common/date.util';
 import { LoanStatus } from '../common/enums';
 import { Debtor } from '../entities/debtor.entity';
 import { Loan } from '../entities/loan.entity';
+import { LoanCycle } from '../entities/loan-cycle.entity';
 import { Payment } from '../entities/payment.entity';
 import { round2, splitInstallmentDue } from '../loans/installment-plan';
 import { collectionInterestOnDay } from '../loans/interest-appointment';
@@ -215,14 +216,18 @@ export class DashboardService {
     @InjectRepository(Loan) private loans: Repository<Loan>,
     @InjectRepository(Payment) private payments: Repository<Payment>,
     @InjectRepository(Debtor) private debtors: Repository<Debtor>,
+    @InjectRepository(LoanCycle) private cycles: Repository<LoanCycle>,
     private loansService: LoansService,
   ) {}
 
   /**
    * ยอดกู้ที่เกี่ยวข้องกับวันที่เลือก = ยอดที่ยังเปิดอยู่ + ยอดที่ปิด/ตัดหนี้สูญไปแล้ว
    * แต่มีเงินเข้าในวันนั้น (ลูกหนี้ปิดยอดวันนี้ต้องยังนับเป็นเงินที่เก็บได้วันนี้)
+   *
+   * โหลด debtor กับ loan ก่อน แล้ว batch โหลด payments/cycles เฉพาะช่วงที่ dayItem ใช้
+   * (ไม่ดึงประวัติทั้งตาราง) — debtorId = จำกัดเฉพาะลูกหนี้คนเดียว (หน้าบิล)
    */
-  private async loansForDay(day: string): Promise<Loan[]> {
+  private async loansForDay(day: string, debtorId?: string): Promise<Loan[]> {
     const open = await this.loans.find({
       where: {
         status: In([
@@ -230,22 +235,163 @@ export class DashboardService {
           LoanStatus.DEAD,
           LoanStatus.INSTALLMENT,
         ]),
+        ...(debtorId ? { debtorId } : {}),
       },
-      relations: { debtor: true, cycles: true, payments: true },
+      relations: { debtor: true },
+      relationLoadStrategy: 'query',
     });
     const openIds = new Set(open.map((l) => l.id));
-    const paidThatDay = await this.payments.find({ where: { paidDate: day } });
+
+    // หา loanId ที่มีเงินเข้าวันนี้ แต่ไม่อยู่ใน open (ปิด/หนี้สูญแล้ว)
+    let paidLoanIds: string[];
+    if (debtorId) {
+      const rows = await this.payments
+        .createQueryBuilder('p')
+        .select('DISTINCT p.loanId', 'loanId')
+        .innerJoin('p.loan', 'l')
+        .where('p.paidDate = :day', { day })
+        .andWhere('l.debtorId = :debtorId', { debtorId })
+        .getRawMany<{ loanId: string }>();
+      paidLoanIds = rows.map((r) => r.loanId);
+    } else {
+      const paidThatDay = await this.payments.find({
+        where: { paidDate: day },
+        select: { loanId: true, id: true },
+      });
+      paidLoanIds = paidThatDay.map((p) => p.loanId);
+    }
+
     const settledIds = [
-      ...new Set(
-        paidThatDay.map((p) => p.loanId).filter((id) => !openIds.has(id)),
-      ),
+      ...new Set(paidLoanIds.filter((id) => !openIds.has(id))),
     ];
-    if (settledIds.length === 0) return open;
-    const settled = await this.loans.find({
-      where: { id: In(settledIds) },
-      relations: { debtor: true, cycles: true, payments: true },
-    });
-    return [...open, ...settled];
+    let settled: Loan[] = [];
+    if (settledIds.length > 0) {
+      settled = await this.loans.find({
+        where: { id: In(settledIds) },
+        relations: { debtor: true },
+        relationLoadStrategy: 'query',
+      });
+    }
+    const loans = [...open, ...settled];
+    await this.attachDayRelations(loans, day);
+    return loans;
+  }
+
+  /**
+   * แปะ payments/cycles ที่ dayItem + cycleStatusOn / currentCycleInfo / นัดดอก ต้องใช้
+   * — payments ของวันนั้นทุกยอด + ช่วงรอบดอกของ ACTIVE
+   * — cycles ที่ยังไม่สะสม + รอบสะสมล่าสุดต่อสัญญา + รอบของวันนั้น
+   */
+  private async attachDayRelations(loans: Loan[], day: string): Promise<void> {
+    if (loans.length === 0) return;
+    const ids = loans.map((l) => l.id);
+    const activeIds = loans
+      .filter((l) => l.status === LoanStatus.ACTIVE)
+      .map((l) => l.id);
+
+    // เพดานวัน = วันดู หรือวันนัดดอกที่ไกลกว่า (นัดคลุมหลายรอบ)
+    let ceil = day;
+    for (const l of loans) {
+      if (l.interestDueDate && l.interestDueDate > ceil)
+        ceil = l.interestDueDate;
+    }
+
+    // พื้นช่วงจ่ายดอก: รอบสะสมล่าสุดต่อ ACTIVE (หรือวันเปิดยอด−1)
+    const lastAccruedDue = new Map<string, string>();
+    if (activeIds.length > 0) {
+      const raw = await this.cycles
+        .createQueryBuilder('c')
+        .select('c.loanId', 'loanId')
+        .addSelect('MAX(c.dueDate)', 'dueDate')
+        .where('c.loanId IN (:...ids)', { ids: activeIds })
+        .andWhere('c.accrued = :accrued', { accrued: true })
+        .groupBy('c.loanId')
+        .getRawMany<{ loanId: string; dueDate: string }>();
+      for (const r of raw) lastAccruedDue.set(r.loanId, r.dueDate);
+    }
+
+    let paymentFloor = day;
+    for (const l of loans) {
+      if (l.status !== LoanStatus.ACTIVE) continue;
+      const ws = lastAccruedDue.get(l.id) ?? addDays(l.startDate, -1);
+      if (ws < paymentFloor) paymentFloor = ws;
+    }
+
+    // เงินเข้าของวันนั้น (paidToday / ตัดต้นวันนี้) — ทุกสถานะ
+    const dayPays =
+      ids.length === 0
+        ? []
+        : await this.payments.find({
+            where: { loanId: In(ids), paidDate: day },
+          });
+
+    // ดอกที่จ่ายในหน้าต่างรอบ (cycleStatusOn / นัด) — เฉพาะ ACTIVE
+    let windowPays: Payment[] = [];
+    if (activeIds.length > 0 && paymentFloor <= ceil) {
+      windowPays = await this.payments
+        .createQueryBuilder('p')
+        .where('p.loanId IN (:...ids)', { ids: activeIds })
+        .andWhere('p.paidDate > :floor', { floor: paymentFloor })
+        .andWhere('p.paidDate <= :ceil', { ceil })
+        .andWhere('p.onDeadLoan = :dead', { dead: false })
+        .getMany();
+    }
+
+    const paysByLoan = new Map<string, Payment[]>();
+    const pushPay = (p: Payment) => {
+      const arr = paysByLoan.get(p.loanId) ?? [];
+      if (!arr.some((x) => x.id === p.id)) arr.push(p);
+      paysByLoan.set(p.loanId, arr);
+    };
+    for (const p of dayPays) pushPay(p);
+    for (const p of windowPays) pushPay(p);
+
+    // cycles: ยังไม่สะสมทั้งก้อน + รอบของวันนั้น + รอบสะสมล่าสุดต่อสัญญา
+    const cyclesByLoan = new Map<string, LoanCycle[]>();
+    if (activeIds.length > 0) {
+      const pendingOrDay = await this.cycles
+        .createQueryBuilder('c')
+        .where('c.loanId IN (:...ids)', { ids: activeIds })
+        .andWhere('(c.accrued = :no OR c.dueDate = :day)', {
+          no: false,
+          day,
+        })
+        .getMany();
+
+      const lastDueList = [...lastAccruedDue.entries()];
+      let lastRows: LoanCycle[] = [];
+      if (lastDueList.length > 0) {
+        lastRows = await this.cycles
+          .createQueryBuilder('c')
+          .where('c.loanId IN (:...ids)', { ids: activeIds })
+          .andWhere('c.accrued = :yes', { yes: true })
+          .andWhere(
+            lastDueList
+              .map((_, i) => `(c.loanId = :lid${i} AND c.dueDate = :ld${i})`)
+              .join(' OR '),
+            Object.fromEntries(
+              lastDueList.flatMap(([lid, d], i) => [
+                [`lid${i}`, lid],
+                [`ld${i}`, d],
+              ]),
+            ),
+          )
+          .getMany();
+      }
+
+      const pushCycle = (c: LoanCycle) => {
+        const arr = cyclesByLoan.get(c.loanId) ?? [];
+        if (!arr.some((x) => x.id === c.id)) arr.push(c);
+        cyclesByLoan.set(c.loanId, arr);
+      };
+      for (const c of pendingOrDay) pushCycle(c);
+      for (const c of lastRows) pushCycle(c);
+    }
+
+    for (const loan of loans) {
+      loan.payments = paysByLoan.get(loan.id) ?? [];
+      loan.cycles = cyclesByLoan.get(loan.id) ?? [];
+    }
   }
 
   /** ยอดที่ต้องเก็บของยอดกู้หนึ่งก้อนในวันที่เลือก (ยอดค้างแยกออก ไม่รวมใน dueTotal) */
@@ -465,9 +611,7 @@ export class DashboardService {
     if (!debtor) throw new NotFoundException('ไม่พบลูกหนี้');
     await this.loansService.accrueAllActive();
 
-    const loans = (await this.loansForDay(day)).filter(
-      (l) => l.debtorId === debtorId,
-    );
+    const loans = await this.loansForDay(day, debtorId);
     const items = new Map<string, DayLoanItem>();
     for (const loan of loans) items.set(loan.id, this.dayItem(loan, day));
     const group = this.groupByDebtor(loans, items)[0] ?? null;
@@ -554,6 +698,7 @@ export class DashboardService {
         ]),
       },
       relations: { debtor: true },
+      relationLoadStrategy: 'query',
     });
 
     const collect = (
@@ -631,8 +776,29 @@ export class DashboardService {
   /** สรุปภาพรวมธุรกิจ */
   async summary() {
     await this.loansService.accrueAllActive();
-    const loans = await this.loans.find();
-    const pays = await this.payments.find();
+    const loans = await this.loans.find({
+      select: {
+        id: true,
+        status: true,
+        principalOriginal: true,
+        outstandingPrincipal: true,
+        arrears: true,
+        deadBalance: true,
+        deadDate: true,
+        installmentCount: true,
+      },
+    });
+    const payAgg = await this.payments
+      .createQueryBuilder('p')
+      .select(
+        'COALESCE(SUM(p.interestPaid + p.arrearsPaid), 0)',
+        'interestCollected',
+      )
+      .addSelect('COALESCE(SUM(p.principalPaid), 0)', 'principalCollected')
+      .getRawOne<{
+        interestCollected: string;
+        principalCollected: string;
+      }>();
 
     const active = loans.filter((l) => l.status === LoanStatus.ACTIVE);
     const dead = loans.filter((l) => l.status === LoanStatus.DEAD);
@@ -641,21 +807,25 @@ export class DashboardService {
     );
     const badDebtLoans = loans.filter((l) => l.status === LoanStatus.BAD_DEBT);
 
-    const interestCollected = pays.reduce(
-      (s, p) => s + p.interestPaid + p.arrearsPaid,
-      0,
-    );
+    const interestCollected =
+      parseFloat(String(payAgg?.interestCollected ?? 0)) || 0;
     // ยอดที่ตัดหนี้สูญ = ผลขาดทุนที่ยังเก็บไม่ได้ (หักส่วนที่เก็บคืนได้ทีหลังแล้ว)
     const badDebt = round2(
       badDebtLoans.reduce((s, l) => s + this.loansService.lossOf(l), 0),
     );
     // เงินที่เก็บคืนได้จากยอดที่ตัดหนี้สูญไปแล้ว — ทำให้ขาดทุนจริงน้อยกว่าที่ตัดไว้
+    // ใช้ onDeadLoan ของ BAD_DEBT เท่านั้น — คำนวณจาก payments ของ bad debt ids
     const badDebtIds = new Set(badDebtLoans.map((l) => l.id));
-    const badDebtRecovered = round2(
-      pays
-        .filter((p) => p.onDeadLoan && badDebtIds.has(p.loanId))
-        .reduce((s, p) => s + p.amount, 0),
-    );
+    let badDebtRecovered = 0;
+    if (badDebtIds.size > 0) {
+      const recovered = await this.payments
+        .createQueryBuilder('p')
+        .select('COALESCE(SUM(p.amount), 0)', 'total')
+        .where('p.onDeadLoan = true')
+        .andWhere('p.loanId IN (:...ids)', { ids: [...badDebtIds] })
+        .getRawOne<{ total: string }>();
+      badDebtRecovered = round2(parseFloat(String(recovered?.total ?? 0)) || 0);
+    }
 
     return {
       totalPrincipalReleased: loans.reduce(
@@ -675,7 +845,8 @@ export class DashboardService {
       badDebt,
       badDebtRecovered,
       interestCollected,
-      principalCollected: pays.reduce((s, p) => s + p.principalPaid, 0),
+      principalCollected:
+        parseFloat(String(payAgg?.principalCollected ?? 0)) || 0,
       // กำไรสุทธิ = ดอก+ค้างที่เก็บได้ − หนี้สูญ
       netProfit: interestCollected - badDebt,
       counts: {

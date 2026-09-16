@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { AuthGate } from '@/components/auth-gate';
-import { buttonClassName, SelectMenu, TextInput } from '@/components/form';
+import { Button, buttonClassName, SelectMenu, TextInput } from '@/components/form';
 import { IconPlus } from '@/components/icons';
 import { PageError } from '@/components/page-error';
 import { PageSkeleton } from '@/components/skeleton';
@@ -37,6 +37,8 @@ const filterOptions: { value: Filter; label: string }[] = [
 const isFilter = (v: string | null): v is Filter =>
   filterOptions.some((o) => o.value === v);
 
+const PAGE_SIZE = 50;
+
 const statusStyle: Record<LoanStatus, string> = {
   ACTIVE:
     'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
@@ -56,13 +58,31 @@ function interestLabel(l: LoanListItem): string {
 }
 
 function LoansView() {
-  const { data: loans, error, refetch } = useAllLoans();
   const [q, setQ] = useState('');
-  // เปิดหน้านี้พร้อมกรองสถานะได้จาก ?status= (มาจากชิปในหน้าภาพรวม)
+  const [qDebounced, setQDebounced] = useState('');
   const initial = useSearchParams().get('status');
   const [filter, setFilter] = useState<Filter>(
     isFilter(initial) ? initial : 'ALL',
   );
+  const [page, setPage] = useState(1);
+  const scope = `${filter}|${qDebounced}`;
+  const [pageScope, setPageScope] = useState(scope);
+  if (pageScope !== scope) {
+    setPageScope(scope);
+    setPage(1);
+  }
+
+  useEffect(() => {
+    const t = setTimeout(() => setQDebounced(q), 300);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const { data, error, refetch, isFetching } = useAllLoans({
+    page,
+    pageSize: PAGE_SIZE,
+    q: qDebounced,
+    status: filter,
+  });
 
   if (error)
     return (
@@ -71,27 +91,12 @@ function LoansView() {
         <PageError message={error.message} onRetry={() => void refetch()} />
       </div>
     );
-  if (!loans) return <PageSkeleton />;
+  if (!data) return <PageSkeleton />;
 
-  const needle = q.trim().toLowerCase();
-  const filtered = loans.filter((l) => {
-    if (filter === 'OVERDUE' && !l.overdue) return false;
-    if (filter !== 'ALL' && filter !== 'OVERDUE' && l.status !== filter)
-      return false;
-    if (!needle) return true;
-    return (
-      l.debtorName.toLowerCase().includes(needle) ||
-      (l.contractNumber ?? '').toLowerCase().includes(needle)
-    );
-  });
-
-  const openCount = loans.filter(
-    (l) =>
-      l.status === 'ACTIVE' ||
-      l.status === 'DEAD' ||
-      l.status === 'INSTALLMENT',
-  ).length;
-  const overdueCount = loans.filter((l) => l.overdue).length;
+  const loans = data.items;
+  const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize));
+  const openCount = data.openCount;
+  const overdueCount = data.overdueCount;
 
   return (
     <div className="space-y-6">
@@ -99,13 +104,17 @@ function LoansView() {
         <div className="space-y-1">
           <h1 className="sr-only">สัญญาเงินกู้</h1>
           <p className="text-sm text-slate-500 dark:text-gray-400">
-            ทั้งหมด {loans.length} สัญญา · เปิดอยู่ {openCount}
-            {overdueCount > 0 && (
+            ทั้งหมด {data.total} สัญญา
+            {filter === 'ALL' && qDebounced === ''
+              ? ` · เปิดอยู่ ${openCount}`
+              : ''}
+            {overdueCount > 0 && filter === 'ALL' && qDebounced === '' && (
               <span className="text-red-600 dark:text-red-400">
                 {' '}
                 · ค้างชำระ {overdueCount}
               </span>
             )}
+            {isFetching ? ' · กำลังอัปเดต…' : ''}
           </p>
         </div>
         <Link
@@ -141,7 +150,7 @@ function LoansView() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-900">
         <div className="grid grid-cols-1 gap-3 p-3 xl:hidden lg:grid-cols-2">
-          {filtered.map((l) => (
+          {loans.map((l) => (
             <Link
               key={l.id}
               href={`/debtors/${l.debtorId}`}
@@ -190,7 +199,7 @@ function LoansView() {
               </dl>
             </Link>
           ))}
-          {filtered.length === 0 && (
+          {loans.length === 0 && (
             <p className="col-span-full py-8 text-center text-gray-500 dark:text-gray-400">
               ไม่พบสัญญา
             </p>
@@ -208,7 +217,7 @@ function LoansView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {filtered.map((l) => (
+              {loans.map((l) => (
                 <tr
                   key={l.id}
                   className="align-top text-gray-700 transition-colors hover:bg-slate-50 dark:text-gray-300 dark:hover:bg-gray-800/50"
@@ -218,50 +227,50 @@ function LoansView() {
                       href={`/debtors/${l.debtorId}`}
                       className="block truncate font-semibold text-slate-900 hover:text-primary hover:underline dark:text-white"
                     >
-                      {l.contractNumber ?? '—'}
-                    </Link>
-                    <Link
-                      href={`/debtors/${l.debtorId}`}
-                      className="mt-1 block truncate font-medium text-slate-600 hover:text-primary hover:underline dark:text-gray-300"
-                    >
                       {l.debtorName}
                     </Link>
+                    <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-gray-400">
+                      {l.contractNumber ?? '—'}
+                    </p>
                   </td>
                   <td className="px-4 py-4">
-                    <div className="grid min-w-0 grid-cols-3 gap-2 xl:gap-3">
+                    <div className="grid grid-cols-3 gap-2">
                       <TableMoney label="ต้องชำระ" value={l.totalDue} />
                       <TableMoney label="รับแล้ว" value={l.paidTotal} tone="paid" />
-                      <TableMoney label="คงเหลือ" value={l.remaining} tone="remaining" />
+                      <TableMoney
+                        label="คงเหลือ"
+                        value={l.remaining}
+                        tone="remaining"
+                      />
                     </div>
                   </td>
-                  <td className="min-w-0 px-4 py-4">
-                    <p className="font-medium text-slate-800 tabular-nums dark:text-gray-200">
-                      เงินต้น ฿{baht(l.principalOriginal)}
+                  <td className="px-4 py-4 text-sm">
+                    <p>ต้น ฿{baht(l.principalOriginal)}</p>
+                    <p className="mt-1 text-slate-500 dark:text-gray-400">
+                      งวดถัดไป{' '}
+                      {l.nextDueDate ? thaiDate(l.nextDueDate) : '—'}
                     </p>
-                    <p className="mt-1 text-[13px] leading-snug break-words text-slate-500 dark:text-gray-400">
+                    <p className="mt-1 text-slate-500 dark:text-gray-400">
                       {interestLabel(l)}
-                    </p>
-                    <p className="mt-1.5 text-[13px] font-medium text-slate-600 dark:text-gray-300">
-                      งวดถัดไป {l.nextDueDate ? thaiDate(l.nextDueDate) : '—'}
                     </p>
                   </td>
                   <td className="px-5 py-4">
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-col items-start gap-1">
                       <span
                         className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle[l.status]}`}
                       >
                         {statusLabel[l.status]}
                       </span>
-                    {l.overdue && (
-                      <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
-                        ค้างชำระ
-                      </span>
-                    )}
+                      {l.overdue && (
+                        <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
+                          ค้างชำระ
+                        </span>
+                      )}
                     </div>
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {loans.length === 0 && (
                 <tr>
                   <td
                     colSpan={4}
@@ -276,6 +285,31 @@ function LoansView() {
         </div>
       </div>
 
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-slate-500 dark:text-gray-400">
+            หน้า {page} / {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              ก่อนหน้า
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              ถัดไป
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -321,7 +355,9 @@ function Detail({
   return (
     <div className={className}>
       <dt className="text-xs text-slate-500 dark:text-gray-400">{label}</dt>
-      <dd className="mt-0.5 font-medium leading-snug text-slate-700 dark:text-gray-300">{value}</dd>
+      <dd className="mt-0.5 font-medium leading-snug text-slate-700 dark:text-gray-300">
+        {value}
+      </dd>
     </div>
   );
 }
@@ -344,7 +380,9 @@ function TableMoney({
   return (
     <div className="min-w-0">
       <p className="text-[12px] text-slate-500 dark:text-gray-400">{label}</p>
-      <p className={`mt-1 text-[13px] font-bold leading-tight break-words tabular-nums xl:text-sm ${color}`}>
+      <p
+        className={`mt-1 text-[13px] font-bold leading-tight break-words tabular-nums xl:text-sm ${color}`}
+      >
         ฿{baht(value)}
       </p>
     </div>

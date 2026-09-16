@@ -272,10 +272,24 @@ export class LoansController {
     return this.loans.create(dto);
   }
 
-  /** รายการสัญญาทั้งหมด พร้อมยอดสรุป (หน้า "สัญญาเงินกู้") */
+  /** รายการสัญญาทั้งหมด พร้อมยอดสรุป (หน้า "สัญญาเงินกู้")
+   *  ?page= → { items, total, page, pageSize, openCount, overdueCount }
+   *  ไม่ส่ง page → LoanListItem[] (เข้ากันได้กับ excel / caller เก่า) */
   @Get()
-  findAll() {
-    return this.loans.findAll();
+  findAll(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('q') q?: string,
+    @Query('status') status?: string,
+  ) {
+    const pageNum = page != null && page !== '' ? Number(page) : undefined;
+    return this.loans.findAll({
+      page: pageNum != null && Number.isFinite(pageNum) ? pageNum : undefined,
+      pageSize:
+        pageSize != null && pageSize !== '' ? Number(pageSize) : undefined,
+      q,
+      status,
+    });
   }
 
   /** พรีวิวตารางงวด + ยอดสรุป ก่อนกดเปิดยอดจริง */

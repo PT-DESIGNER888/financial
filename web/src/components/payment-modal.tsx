@@ -88,11 +88,11 @@ export function PaymentModal({
   );
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedAmount(amountNum), 250);
+    const t = setTimeout(() => setDebouncedAmount(amountNum), 400);
     return () => clearTimeout(t);
   }, [amountNum]);
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedDue(interestDueNum), 250);
+    const t = setTimeout(() => setDebouncedDue(interestDueNum), 400);
     return () => clearTimeout(t);
   }, [interestDueNum]);
 

@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Repository } from 'typeorm';
+import { In, LessThan, Repository } from 'typeorm';
 import { ActivityService } from '../activity/activity.service';
 import { addDays, diffDays, todayStr } from '../common/date.util';
 import {
@@ -36,11 +36,45 @@ import {
   type InterestAppointmentQuote,
 } from './interest-appointment';
 
+/** DTO แถวรายการสัญญา — ใช้ทั้ง API response และ excel */
+export type LoanListItem = {
+  id: string;
+  contractNumber: string | null;
+  debtorId: string;
+  debtorName: string;
+  status: LoanStatus;
+  cycle: LoanCycle;
+  interestMode: InterestMode;
+  isInstallment: boolean;
+  amortized: boolean;
+  interestRatePercent: number;
+  principalOriginal: number;
+  outstandingPrincipal: number;
+  arrears: number;
+  paidTotal: number;
+  remaining: number;
+  totalDue: number;
+  nextDueDate: string | null;
+  overdue: boolean;
+  startDate: string;
+  note: string | null;
+};
+
+export type LoanListPage = {
+  items: LoanListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  openCount: number;
+  overdueCount: number;
+};
+
 @Injectable()
 export class LoansService {
   constructor(
     @InjectRepository(Loan) private loans: Repository<Loan>,
     @InjectRepository(CycleRow) private cycleRows: Repository<CycleRow>,
+    @InjectRepository(Payment) private payments: Repository<Payment>,
     private activity: ActivityService,
   ) {}
 
@@ -690,12 +724,14 @@ export class LoansService {
     const yesterday = addDays(todayStr(), -1);
     const today = todayStr();
     // ข้ามยอดที่คิดค้างถึงเมื่อวานแล้ว — กันโหลด payments/cycles ทั้งตารางทุกครั้งที่เปิดแดชบอร์ด
+    // relationLoadStrategy: 'query' = แยกคิวรี relation แทน JOIN (กัน cartesian egress)
     const active = await this.loans.find({
       where: [
         { status: LoanStatus.ACTIVE, accruedThrough: LessThan(yesterday) },
         { status: LoanStatus.ACTIVE, interestDueDate: LessThan(today) },
       ],
       relations: { debtor: true, payments: true, cycles: true },
+      relationLoadStrategy: 'query',
     });
     return Promise.all(active.map((l) => this.accrue(l)));
   }
@@ -716,19 +752,170 @@ export class LoansService {
     return `${prefix}${String(max + 1).padStart(4, '0')}`;
   }
 
-  /** รายการสัญญาทั้งหมด พร้อมยอดสรุปต่อสัญญา (หน้า "สัญญาเงินกู้") */
-  async findAll() {
+  /** รายการสัญญาทั้งหมด พร้อมยอดสรุปต่อสัญญา (หน้า "สัญญาเงินกู้")
+   *  ไม่โหลด cycles ทั้งประวัติ — โหลดเฉพาะรอบที่ยังไม่สะสม + รอบสะสมล่าสุด
+   *  page ถ้าส่งมา = paginate; ไม่ส่ง = คืน array เดิม (excel / caller เก่า) */
+  async findAll(): Promise<LoanListItem[]>;
+  async findAll(opts: {
+    page: number;
+    pageSize?: number;
+    q?: string;
+    status?: string;
+  }): Promise<LoanListPage>;
+  async findAll(opts?: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    status?: string;
+  }): Promise<LoanListItem[] | LoanListPage>;
+  async findAll(
+    opts: {
+      page?: number;
+      pageSize?: number;
+      q?: string;
+      status?: string;
+    } = {},
+  ): Promise<LoanListItem[] | LoanListPage> {
+    await this.accrueAllActive();
     const loans = await this.loans.find({
-      relations: { debtor: true, payments: true, cycles: true },
+      relations: { debtor: true },
+      relationLoadStrategy: 'query',
       order: { createdAt: 'DESC' },
     });
-    const accrued = await Promise.all(loans.map((l) => this.accrue(l)));
-    return accrued.map((l) => this.toListItem(l));
+
+    const activeIds = loans
+      .filter((l) => l.status === LoanStatus.ACTIVE)
+      .map((l) => l.id);
+    if (activeIds.length > 0) {
+      await this.attachListCycles(loans, activeIds);
+      await Promise.all(
+        loans
+          .filter((l) => l.status === LoanStatus.ACTIVE)
+          .map((l) => this.ensureCycles(l)),
+      );
+    }
+
+    // SUM ฝั่ง DB แทนโหลด payments ทั้งแถวเข้า memory
+    const sums = await this.payments
+      .createQueryBuilder('p')
+      .select('p.loanId', 'loanId')
+      .addSelect('COALESCE(SUM(p.amount), 0)', 'paidTotal')
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN p.onDeadLoan THEN p.amount ELSE 0 END), 0)',
+        'paidDead',
+      )
+      .groupBy('p.loanId')
+      .getRawMany<{ loanId: string; paidTotal: string; paidDead: string }>();
+    const sumBy = new Map(
+      sums.map((r) => [
+        r.loanId,
+        {
+          paidTotal: parseFloat(String(r.paidTotal)) || 0,
+          paidDead: parseFloat(String(r.paidDead)) || 0,
+        },
+      ]),
+    );
+
+    const items = loans.map((l) =>
+      this.toListItem(l, sumBy.get(l.id) ?? { paidTotal: 0, paidDead: 0 }),
+    );
+
+    if (opts.page == null) return items;
+
+    const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 50));
+    const page = Math.max(1, opts.page);
+    const needle = (opts.q ?? '').trim().toLowerCase();
+    const status = opts.status ?? 'ALL';
+    const filtered = items.filter((l) => {
+      if (status === 'OVERDUE' && !l.overdue) return false;
+      if (status !== 'ALL' && status !== 'OVERDUE' && l.status !== status)
+        return false;
+      if (!needle) return true;
+      return (
+        l.debtorName.toLowerCase().includes(needle) ||
+        (l.contractNumber ?? '').toLowerCase().includes(needle)
+      );
+    });
+    const total = filtered.length;
+    const start = (page - 1) * pageSize;
+    return {
+      items: filtered.slice(start, start + pageSize),
+      total,
+      page,
+      pageSize,
+      openCount: items.filter(
+        (l) =>
+          l.status === LoanStatus.ACTIVE ||
+          l.status === LoanStatus.DEAD ||
+          l.status === LoanStatus.INSTALLMENT,
+      ).length,
+      overdueCount: items.filter((l) => l.overdue).length,
+    };
   }
 
-  private toListItem(loan: Loan) {
-    const payments = loan.payments ?? [];
-    const paidTotal = round2(payments.reduce((s, p) => s + p.amount, 0));
+  /** cycles สำหรับ list/ensureCycles: รอบค้างสะสม + รอบสะสมล่าสุดต่อสัญญา (ไม่ดึงประวัติเก่า) */
+  private async attachListCycles(loans: Loan[], activeIds: string[]) {
+    const pending = await this.cycleRows.find({
+      where: { loanId: In(activeIds), accrued: false },
+    });
+    const lastRaw = await this.cycleRows
+      .createQueryBuilder('c')
+      .select('c.loanId', 'loanId')
+      .addSelect('MAX(c.dueDate)', 'dueDate')
+      .where('c.loanId IN (:...ids)', { ids: activeIds })
+      .andWhere('c.accrued = :yes', { yes: true })
+      .groupBy('c.loanId')
+      .getRawMany<{ loanId: string; dueDate: string }>();
+
+    let lastRows: CycleRow[] = [];
+    if (lastRaw.length > 0) {
+      lastRows = await this.cycleRows
+        .createQueryBuilder('c')
+        .where('c.loanId IN (:...ids)', { ids: activeIds })
+        .andWhere('c.accrued = :yes', { yes: true })
+        .andWhere(
+          lastRaw
+            .map((_, i) => `(c.loanId = :lid${i} AND c.dueDate = :ld${i})`)
+            .join(' OR '),
+          Object.fromEntries(
+            lastRaw.flatMap((r, i) => [
+              [`lid${i}`, r.loanId],
+              [`ld${i}`, r.dueDate],
+            ]),
+          ),
+        )
+        .getMany();
+    }
+
+    const byLoan = new Map<string, CycleRow[]>();
+    const push = (c: CycleRow) => {
+      const arr = byLoan.get(c.loanId) ?? [];
+      if (!arr.some((x) => x.id === c.id)) arr.push(c);
+      byLoan.set(c.loanId, arr);
+    };
+    for (const c of pending) push(c);
+    for (const c of lastRows) push(c);
+    for (const loan of loans) {
+      if (loan.status === LoanStatus.ACTIVE) {
+        loan.cycles = byLoan.get(loan.id) ?? [];
+      }
+    }
+  }
+
+  private toListItem(
+    loan: Loan,
+    paymentSum?: { paidTotal: number; paidDead: number },
+  ) {
+    const paidTotal = round2(
+      paymentSum?.paidTotal ??
+        (loan.payments ?? []).reduce((s, p) => s + p.amount, 0),
+    );
+    const paidDead = round2(
+      paymentSum?.paidDead ??
+        (loan.payments ?? [])
+          .filter((p) => p.onDeadLoan)
+          .reduce((s, p) => s + p.amount, 0),
+    );
     const frozen = loan.deadDate != null || this.isInstallment(loan);
     const remaining =
       loan.status === LoanStatus.CLOSED
@@ -754,9 +941,6 @@ export class LoansService {
       } else if (loan.deadDate && loan.installmentAmount) {
         // ยอดตาย: ค้างถ้าผ่อนมาน้อยกว่างวดที่ครบกำหนดแล้ว (ทุก 10 วันนับจากวันแปลง)
         const cyclesDue = Math.floor(diffDays(loan.deadDate, today) / 10);
-        const paidDead = payments
-          .filter((p) => p.onDeadLoan)
-          .reduce((s, p) => s + p.amount, 0);
         const expected = Math.min(
           cyclesDue * loan.installmentAmount,
           round2(paidDead + remaining),
@@ -812,15 +996,76 @@ export class LoansService {
   }
 
   async findOne(id: string): Promise<Loan> {
+    // ไม่ใส่ order ซ้อน relation กับ relationLoadStrategy:'query'
+    // (TypeORM สร้าง distinctAlias ที่ SQLite/บางไดรเวอร์พัง)
     const loan = await this.loans.findOne({
       where: { id },
       relations: { debtor: true, payments: true, cycles: true },
-      order: {
-        payments: { paidDate: 'DESC', createdAt: 'DESC' },
-        cycles: { dueDate: 'ASC' },
-      },
+      relationLoadStrategy: 'query',
     });
     if (!loan) throw new NotFoundException('ไม่พบยอดกู้');
+    loan.payments = [...(loan.payments ?? [])].sort((a, b) => {
+      const d = b.paidDate.localeCompare(a.paidDate);
+      return d !== 0 ? d : b.createdAt.getTime() - a.createdAt.getTime();
+    });
+    loan.cycles = [...(loan.cycles ?? [])].sort((a, b) =>
+      a.dueDate.localeCompare(b.dueDate),
+    );
+    return this.accrue(loan);
+  }
+
+  /**
+   * โหลดยอดสำหรับ /payments/suggest — ไม่โหลด debtor / ประวัติทั้งก้อน
+   * เฉพาะ cycles ที่ยังใช้คำนวณ + payments ในหน้าต่างรอบดอก
+   */
+  async findOneForSuggest(id: string): Promise<Loan> {
+    const loan = await this.loans.findOne({ where: { id } });
+    if (!loan) throw new NotFoundException('ไม่พบยอดกู้');
+
+    if (
+      loan.status === LoanStatus.DEAD ||
+      loan.status === LoanStatus.INSTALLMENT ||
+      loan.status === LoanStatus.BAD_DEBT ||
+      loan.status === LoanStatus.CLOSED
+    ) {
+      loan.cycles = [];
+      loan.payments = [];
+      return loan;
+    }
+
+    const pending = await this.cycleRows.find({
+      where: { loanId: id, accrued: false },
+      order: { dueDate: 'ASC' },
+    });
+    const lastAccrued = await this.cycleRows.find({
+      where: { loanId: id, accrued: true },
+      order: { dueDate: 'DESC' },
+      take: 1,
+    });
+    loan.cycles = [...lastAccrued, ...pending];
+    await this.ensureCycles(loan);
+
+    const rows = [...(loan.cycles ?? [])].sort((a, b) =>
+      a.dueDate.localeCompare(b.dueDate),
+    );
+    const firstPendingIdx = rows.findIndex((r) => !r.accrued);
+    const windowStart =
+      firstPendingIdx > 0
+        ? rows[firstPendingIdx - 1].dueDate
+        : addDays(loan.startDate, -1);
+
+    let ceil = todayStr();
+    if (loan.interestDueDate && loan.interestDueDate > ceil) {
+      ceil = loan.interestDueDate;
+    }
+
+    loan.payments = await this.payments
+      .createQueryBuilder('p')
+      .where('p.loanId = :id', { id })
+      .andWhere('p.paidDate > :floor', { floor: windowStart })
+      .andWhere('p.paidDate <= :ceil', { ceil })
+      .getMany();
+
     return this.accrue(loan);
   }
 

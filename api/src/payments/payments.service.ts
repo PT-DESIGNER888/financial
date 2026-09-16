@@ -98,7 +98,7 @@ export class PaymentsService {
     paymentType: PaymentType = PaymentType.BOTH,
     interestDueOverride?: number,
   ) {
-    const loan = await this.loansService.findOne(loanId);
+    const loan = await this.loansService.findOneForSuggest(loanId);
     // ยอดหนี้สูญที่เก็บคืนได้ทีหลัง รับเป็นเงินก้อนเดียวเหมือนยอดตาย (หักยอดขาดทุนลง)
     const frozen =
       loan.status === LoanStatus.DEAD ||
@@ -126,9 +126,7 @@ export class PaymentsService {
     const cur = this.loansService.currentCycleInfo(loan);
     const appt = this.loansService.interestAppointmentQuote(loan);
     const apptOpen =
-      !!appt &&
-      !!loan.interestDueDate &&
-      loan.interestDueDate >= todayStr();
+      !!appt && !!loan.interestDueDate && loan.interestDueDate >= todayStr();
     const cycleDue = apptOpen
       ? interestDueOverride !== undefined
         ? round2(interestDueOverride)
@@ -178,9 +176,10 @@ export class PaymentsService {
       cycle: cur
         ? {
             cycleId: cur.cycleId,
-            dueDate: apptOpen && loan.interestDueDate
-              ? loan.interestDueDate
-              : cur.dueDate,
+            dueDate:
+              apptOpen && loan.interestDueDate
+                ? loan.interestDueDate
+                : cur.dueDate,
             computedInterest: apptOpen
               ? appt.computedTotal
               : cur.computedInterest,
