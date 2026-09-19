@@ -89,6 +89,9 @@ export function validInterestPaidForDue(
 
 @Injectable()
 export class LoansService {
+  private lastAccrualCheckAt = 0;
+  private accrualCheckInFlight: Promise<Loan[]> | null = null;
+
   constructor(
     @InjectRepository(Loan) private loans: Repository<Loan>,
     @InjectRepository(CycleRow) private cycleRows: Repository<CycleRow>,
@@ -721,19 +724,40 @@ export class LoansService {
   }
 
   async accrueAllActive(): Promise<Loan[]> {
+    const now = Date.now();
+    // การสะสมดอกเปลี่ยนตามวัน ไม่จำเป็นต้องสแกนฐานข้อมูลซ้ำทุกครั้งที่
+    // มือถือ polling ข้อมูล เว้นช่วงสั้น ๆ แต่ยังให้ test ตรวจทุกครั้งตามเดิม
+    if (
+      process.env.NODE_ENV !== 'test' &&
+      now - this.lastAccrualCheckAt < 30_000
+    ) {
+      return [];
+    }
+    // หน้า dashboard/ยอดค้างอาจเปิดพร้อมกัน ใช้ผลสแกนก้อนเดียวกัน
+    if (this.accrualCheckInFlight) return this.accrualCheckInFlight;
+
     const yesterday = addDays(todayStr(), -1);
     const today = todayStr();
     // ข้ามยอดที่คิดค้างถึงเมื่อวานแล้ว — กันโหลด payments/cycles ทั้งตารางทุกครั้งที่เปิดแดชบอร์ด
     // relationLoadStrategy: 'query' = แยกคิวรี relation แทน JOIN (กัน cartesian egress)
-    const active = await this.loans.find({
-      where: [
-        { status: LoanStatus.ACTIVE, accruedThrough: LessThan(yesterday) },
-        { status: LoanStatus.ACTIVE, interestDueDate: LessThan(today) },
-      ],
-      relations: { debtor: true, payments: true, cycles: true },
-      relationLoadStrategy: 'query',
-    });
-    return Promise.all(active.map((l) => this.accrue(l)));
+    const scan = this.loans
+      .find({
+        where: [
+          { status: LoanStatus.ACTIVE, accruedThrough: LessThan(yesterday) },
+          { status: LoanStatus.ACTIVE, interestDueDate: LessThan(today) },
+        ],
+        relations: { debtor: true, payments: true, cycles: true },
+        relationLoadStrategy: 'query',
+      })
+      .then((active) => Promise.all(active.map((l) => this.accrue(l))));
+    this.accrualCheckInFlight = scan;
+    try {
+      const result = await scan;
+      this.lastAccrualCheckAt = Date.now();
+      return result;
+    } finally {
+      this.accrualCheckInFlight = null;
+    }
   }
 
   /** เลขที่สัญญาถัดไป: L-<ปี พ.ศ. ของวันเปิดยอด>-<ลำดับ 4 หลัก รันต่อปี> */

@@ -25,7 +25,11 @@ export interface TodayData {
 }
 
 const dashboardQuery = {
-  staleTime: 45_000,
+  staleTime: 10_000,
+  // อุปกรณ์อีกเครื่องไม่มี cache ร่วมกัน จึงเช็กเฉพาะหน้าที่เปิดอยู่เป็นระยะ
+  // React Query จะพัก interval เองเมื่อแท็บอยู่เบื้องหลัง
+  refetchInterval: 15_000,
+  refetchIntervalInBackground: false,
   placeholderData: keepPreviousData,
 };
 

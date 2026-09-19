@@ -7,8 +7,8 @@ import { useEffect, useState } from 'react';
  * ตัวจัดการ cache ของ react-query ทั้งแอป — วางไว้ครอบ Shell ใน layout
  *
  * มือถือ (โดยเฉพาะ iOS) มักไม่ยิง window focus ตอนกลับมาที่แอป
- * จึง refetch แดชบอร์ดเมื่อหน้ากลับมาโชว์ — แต่เฉพาะ query ที่ stale แล้ว
- * เพื่อไม่ยิง API หนักซ้ำทุกครั้งสลับแอป
+ * จึง refetch ข้อมูลที่กำลังแสดงเมื่อหน้ากลับมาโชว์ เพื่อให้รายการที่บันทึก
+ * จากคอม/มือถืออีกเครื่องตามกันทัน โดยไม่แตะ query ที่ไม่ได้เปิดอยู่
  */
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const [client] = useState(
@@ -16,8 +16,9 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 45_000,
-            // visibility bump ด้านล่างครอบคลุมมือถือแล้ว — กันยิงซ้ำกับ focus
+            staleTime: 10_000,
+            refetchOnMount: 'always',
+            // ใช้ handler เดียวด้านล่าง ครอบคลุมทั้ง desktop focus และ iOS visibility
             refetchOnWindowFocus: false,
             refetchOnReconnect: true,
             retry: 1,
@@ -32,11 +33,9 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       const now = Date.now();
       if (now - last < 5_000) return;
       last = now;
-      // refetch เฉพาะที่ stale — ไม่ invalidate บังคับ (ลด egress)
+      // Safari/iOS อาจไม่ส่ง focus event เมื่อกลับจากหน้าจอล็อกหรือสลับแอป
       void client.refetchQueries({
-        queryKey: ['dashboard'],
         type: 'active',
-        stale: true,
       });
     };
     const onVisible = () => {
@@ -46,9 +45,11 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       if (e.persisted) bump();
     };
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', bump);
     window.addEventListener('pageshow', onPageShow);
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', bump);
       window.removeEventListener('pageshow', onPageShow);
     };
   }, [client]);

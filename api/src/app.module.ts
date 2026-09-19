@@ -52,6 +52,14 @@ function buildDbOptions(config: ConfigService): TypeOrmModuleOptions {
       migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
       migrationsRun: true, // บูตแล้วรัน migration ที่ยังไม่ได้รันให้อัตโนมัติ
       ssl: { rejectUnauthorized: false }, // Supabase ต้องใช้ SSL
+      // คง connection ไป Supabase ไว้ใช้ซ้ำ ลดเวลาต่อ TLS/DB ทุก request
+      extra: {
+        max: 10,
+        idleTimeoutMillis: 30_000,
+        connectionTimeoutMillis: 10_000,
+        keepAlive: true,
+        keepAliveInitialDelayMillis: 10_000,
+      },
     };
   }
   return {

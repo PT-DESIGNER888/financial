@@ -228,7 +228,7 @@ export class DashboardService {
    * (ไม่ดึงประวัติทั้งตาราง) — debtorId = จำกัดเฉพาะลูกหนี้คนเดียว (หน้าบิล)
    */
   private async loansForDay(day: string, debtorId?: string): Promise<Loan[]> {
-    const open = await this.loans.find({
+    const openPromise = this.loans.find({
       where: {
         status: In([
           LoanStatus.ACTIVE,
@@ -240,26 +240,29 @@ export class DashboardService {
       relations: { debtor: true },
       relationLoadStrategy: 'query',
     });
-    const openIds = new Set(open.map((l) => l.id));
 
     // หา loanId ที่มีเงินเข้าวันนี้ แต่ไม่อยู่ใน open (ปิด/หนี้สูญแล้ว)
-    let paidLoanIds: string[];
-    if (debtorId) {
-      const rows = await this.payments
-        .createQueryBuilder('p')
-        .select('DISTINCT p.loanId', 'loanId')
-        .innerJoin('p.loan', 'l')
-        .where('p.paidDate = :day', { day })
-        .andWhere('l.debtorId = :debtorId', { debtorId })
-        .getRawMany<{ loanId: string }>();
-      paidLoanIds = rows.map((r) => r.loanId);
-    } else {
-      const paidThatDay = await this.payments.find({
-        where: { paidDate: day },
-        select: { loanId: true, id: true },
-      });
-      paidLoanIds = paidThatDay.map((p) => p.loanId);
-    }
+    const paidLoanIdsPromise: Promise<string[]> = debtorId
+      ? this.payments
+          .createQueryBuilder('p')
+          .select('DISTINCT p.loanId', 'loanId')
+          .innerJoin('p.loan', 'l')
+          .where('p.paidDate = :day', { day })
+          .andWhere('l.debtorId = :debtorId', { debtorId })
+          .getRawMany<{ loanId: string }>()
+          .then((rows) => rows.map((r) => r.loanId))
+      : this.payments
+          .find({
+            where: { paidDate: day },
+            select: { loanId: true, id: true },
+          })
+          .then((rows) => rows.map((p) => p.loanId));
+
+    const [open, paidLoanIds] = await Promise.all([
+      openPromise,
+      paidLoanIdsPromise,
+    ]);
+    const openIds = new Set(open.map((l) => l.id));
 
     const settledIds = [
       ...new Set(paidLoanIds.filter((id) => !openIds.has(id))),
@@ -296,19 +299,41 @@ export class DashboardService {
         ceil = l.interestDueDate;
     }
 
-    // พื้นช่วงจ่ายดอก: รอบสะสมล่าสุดต่อ ACTIVE (หรือวันเปิดยอด−1)
-    const lastAccruedDue = new Map<string, string>();
-    if (activeIds.length > 0) {
-      const raw = await this.cycles
-        .createQueryBuilder('c')
-        .select('c.loanId', 'loanId')
-        .addSelect('MAX(c.dueDate)', 'dueDate')
-        .where('c.loanId IN (:...ids)', { ids: activeIds })
-        .andWhere('c.accrued = :accrued', { accrued: true })
-        .groupBy('c.loanId')
-        .getRawMany<{ loanId: string; dueDate: string }>();
-      for (const r of raw) lastAccruedDue.set(r.loanId, r.dueDate);
-    }
+    // คิวรีอิสระชุดแรกยิงพร้อมกัน ลดเวลารอฐานข้อมูลระยะไกล
+    const lastAccruedPromise =
+      activeIds.length > 0
+        ? this.cycles
+            .createQueryBuilder('c')
+            .select('c.loanId', 'loanId')
+            .addSelect('MAX(c.dueDate)', 'dueDate')
+            .where('c.loanId IN (:...ids)', { ids: activeIds })
+            .andWhere('c.accrued = :accrued', { accrued: true })
+            .groupBy('c.loanId')
+            .getRawMany<{ loanId: string; dueDate: string }>()
+        : Promise.resolve([] as { loanId: string; dueDate: string }[]);
+    const dayPaysPromise = this.payments.find({
+      where: { loanId: In(ids), paidDate: day },
+    });
+    const pendingOrDayPromise =
+      activeIds.length > 0
+        ? this.cycles
+            .createQueryBuilder('c')
+            .where('c.loanId IN (:...ids)', { ids: activeIds })
+            .andWhere('(c.accrued = :no OR c.dueDate = :day)', {
+              no: false,
+              day,
+            })
+            .getMany()
+        : Promise.resolve([] as LoanCycle[]);
+
+    const [lastAccruedRaw, dayPays, pendingOrDay] = await Promise.all([
+      lastAccruedPromise,
+      dayPaysPromise,
+      pendingOrDayPromise,
+    ]);
+    const lastAccruedDue = new Map(
+      lastAccruedRaw.map((r) => [r.loanId, r.dueDate]),
+    );
 
     let paymentFloor = day;
     for (const l of loans) {
@@ -317,25 +342,43 @@ export class DashboardService {
       if (ws < paymentFloor) paymentFloor = ws;
     }
 
-    // เงินเข้าของวันนั้น (paidToday / ตัดต้นวันนี้) — ทุกสถานะ
-    const dayPays =
-      ids.length === 0
-        ? []
-        : await this.payments.find({
-            where: { loanId: In(ids), paidDate: day },
-          });
+    // คิวรีชุดที่สองพึ่งค่ารอบล่าสุด แต่ไม่พึ่งกันเอง จึงยิงพร้อมกันได้
+    const windowPaysPromise =
+      activeIds.length > 0 && paymentFloor <= ceil
+        ? this.payments
+            .createQueryBuilder('p')
+            .where('p.loanId IN (:...ids)', { ids: activeIds })
+            .andWhere('p.paidDate > :floor', { floor: paymentFloor })
+            .andWhere('p.paidDate <= :ceil', { ceil })
+            .andWhere('p.onDeadLoan = :dead', { dead: false })
+            .getMany()
+        : Promise.resolve([] as Payment[]);
 
-    // ดอกที่จ่ายในหน้าต่างรอบ (cycleStatusOn / นัด) — เฉพาะ ACTIVE
-    let windowPays: Payment[] = [];
-    if (activeIds.length > 0 && paymentFloor <= ceil) {
-      windowPays = await this.payments
-        .createQueryBuilder('p')
-        .where('p.loanId IN (:...ids)', { ids: activeIds })
-        .andWhere('p.paidDate > :floor', { floor: paymentFloor })
-        .andWhere('p.paidDate <= :ceil', { ceil })
-        .andWhere('p.onDeadLoan = :dead', { dead: false })
-        .getMany();
-    }
+    const lastDueList = [...lastAccruedDue.entries()];
+    const lastRowsPromise =
+      activeIds.length > 0 && lastDueList.length > 0
+        ? this.cycles
+            .createQueryBuilder('c')
+            .where('c.loanId IN (:...ids)', { ids: activeIds })
+            .andWhere('c.accrued = :yes', { yes: true })
+            .andWhere(
+              lastDueList
+                .map((_, i) => `(c.loanId = :lid${i} AND c.dueDate = :ld${i})`)
+                .join(' OR '),
+              Object.fromEntries(
+                lastDueList.flatMap(([lid, d], i) => [
+                  [`lid${i}`, lid],
+                  [`ld${i}`, d],
+                ]),
+              ),
+            )
+            .getMany()
+        : Promise.resolve([] as LoanCycle[]);
+
+    const [windowPays, lastRows] = await Promise.all([
+      windowPaysPromise,
+      lastRowsPromise,
+    ]);
 
     const paysByLoan = new Map<string, Payment[]>();
     const pushPay = (p: Payment) => {
@@ -349,36 +392,6 @@ export class DashboardService {
     // cycles: ยังไม่สะสมทั้งก้อน + รอบของวันนั้น + รอบสะสมล่าสุดต่อสัญญา
     const cyclesByLoan = new Map<string, LoanCycle[]>();
     if (activeIds.length > 0) {
-      const pendingOrDay = await this.cycles
-        .createQueryBuilder('c')
-        .where('c.loanId IN (:...ids)', { ids: activeIds })
-        .andWhere('(c.accrued = :no OR c.dueDate = :day)', {
-          no: false,
-          day,
-        })
-        .getMany();
-
-      const lastDueList = [...lastAccruedDue.entries()];
-      let lastRows: LoanCycle[] = [];
-      if (lastDueList.length > 0) {
-        lastRows = await this.cycles
-          .createQueryBuilder('c')
-          .where('c.loanId IN (:...ids)', { ids: activeIds })
-          .andWhere('c.accrued = :yes', { yes: true })
-          .andWhere(
-            lastDueList
-              .map((_, i) => `(c.loanId = :lid${i} AND c.dueDate = :ld${i})`)
-              .join(' OR '),
-            Object.fromEntries(
-              lastDueList.flatMap(([lid, d], i) => [
-                [`lid${i}`, lid],
-                [`ld${i}`, d],
-              ]),
-            ),
-          )
-          .getMany();
-      }
-
       const pushCycle = (c: LoanCycle) => {
         const arr = cyclesByLoan.get(c.loanId) ?? [];
         if (!arr.some((x) => x.id === c.id)) arr.push(c);
