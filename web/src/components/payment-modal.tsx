@@ -26,6 +26,8 @@ interface Props {
   quickAmounts?: { label: string; amount: number }[];
   /** กรอกยอดเริ่มต้น (เช่น ยอดวันนี้จากหน้าเก็บ) */
   defaultAmount?: number;
+  /** วันที่ของรายการเก็บ — ส่งจากหน้าเก็บวันนี้เพื่อผูกเงินกับรอบที่ผู้ใช้เลือก */
+  paidDate?: string;
   /** ประเภทการรับเงินเริ่มต้น — วันนัดคืนต้นใช้ BOTH */
   defaultType?: PaymentType;
   /** นัดเก็บดอกที่กำลังจ่าย — หลังรับครบถามนัดครั้งหน้า */
@@ -56,6 +58,7 @@ export function PaymentModal({
   frozenLabel = 'ยอดผ่อน',
   quickAmounts,
   defaultAmount,
+  paidDate,
   defaultType,
   collectAppointment,
   onClose,
@@ -102,6 +105,7 @@ export function PaymentModal({
     true,
     effType,
     debouncedDue,
+    paidDate,
   );
   const maxReceivable = ceiling?.maxReceivable ?? 0;
   const principalBalance = ceiling?.principalBalance ?? 0;
@@ -138,6 +142,7 @@ export function PaymentModal({
     !amountEmpty,
     effType,
     debouncedDue,
+    paidDate,
   );
   const suggestionPending =
     !amountEmpty &&
@@ -251,6 +256,7 @@ export function PaymentModal({
       await record.mutateAsync({
         loanId,
         amount: saveAmount,
+        paidDate,
         paymentType: frozen ? undefined : paymentType,
         interestDueOverride: overrideChanged ? interestDueNum : undefined,
         ...alloc,

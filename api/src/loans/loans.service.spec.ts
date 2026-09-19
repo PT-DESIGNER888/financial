@@ -2,7 +2,7 @@ import { InterestMode, LoanCycle, LoanStatus } from '../common/enums';
 import type { Loan } from '../entities/loan.entity';
 import type { LoanCycle as CycleRow } from '../entities/loan-cycle.entity';
 import type { Payment } from '../entities/payment.entity';
-import { LoansService } from './loans.service';
+import { LoansService, validInterestPaidForDue } from './loans.service';
 
 /**
  * เทสเฉพาะตรรกะที่ไม่แตะฐานข้อมูล (isDueOn / cycleStatusOn)
@@ -236,6 +236,44 @@ describe('LoansService.isDueOn', () => {
 });
 
 describe('LoansService.cycleStatusOn', () => {
+  it('ครบ 400 จ่าย 100 → เหลือเข้าค้างเพียง 300', () => {
+    const loan = activeLoan({
+      cycles: [cycleRow('2026-07-13', { interestOverride: 400 })],
+      payments: [payment('2026-07-13', 100)],
+    });
+    expect(service.cycleStatusOn(loan, '2026-07-13')).toMatchObject({
+      interestDue: 400,
+      interestPaid: 100,
+      interestRemaining: 300,
+    });
+  });
+
+  it('ครบ 1,000 จ่ายครบ 1,000 → รอบเก่าเหลือ 0 และไม่ถูกนับซ้ำในรอบใหม่', () => {
+    const paid = payment('2026-07-13', 1_000);
+    const loan = activeLoan({
+      cycles: [
+        cycleRow('2026-07-13', { accrued: true, accruedAmount: 0 }),
+        cycleRow('2026-07-20'),
+      ],
+      payments: [paid],
+    });
+    expect(validInterestPaidForDue([paid], '2026-07-06', '2026-07-13')).toBe(
+      1_000,
+    );
+    expect(service.cycleStatusOn(loan, '2026-07-20')).toMatchObject({
+      interestPaid: 0,
+      interestRemaining: 1_000,
+    });
+  });
+
+  it('จ่ายบางส่วนในวันครบกำหนด → ยังผูกกับรอบเดิมเมื่อข้ามวัน', () => {
+    const paid = payment('2026-07-13', 250);
+    expect(validInterestPaidForDue([paid], '2026-07-06', '2026-07-13')).toBe(
+      250,
+    );
+    expect(validInterestPaidForDue([paid], '2026-07-13', '2026-07-20')).toBe(0);
+  });
+
   it('ยังไม่จ่าย = เหลือเต็มจำนวน', () => {
     const loan = activeLoan({ cycles: [cycleRow('2026-07-13')] });
     expect(service.cycleStatusOn(loan, '2026-07-13')).toEqual({
@@ -296,6 +334,56 @@ describe('LoansService.cycleStatusOn', () => {
     const s = service.cycleStatusOn(loan, '2026-07-20');
     expect(s?.interestDue).toBe(1_000);
     expect(s?.interestPaid).toBe(0); // จ่ายวันที่ 13 อยู่นอกช่วง (13, 20]
+  });
+});
+
+describe('LoansService.applyBalances — ปิดเฉพาะสัญญาที่จ่ายครบ', () => {
+  it('สัญญาที่เลือกยอดเป็นศูนย์ถูกปิด แต่สัญญาอื่นไม่เปลี่ยน', async () => {
+    const selected = activeLoan({
+      id: 'selected',
+      outstandingPrincipal: 0,
+      arrears: 0,
+    });
+    const unrelated = activeLoan({ id: 'unrelated' });
+    const saved = new Map([
+      [selected.id, selected],
+      [unrelated.id, unrelated],
+    ]);
+    const svc = new LoansService(
+      {
+        update: (id: string, patch: Partial<Loan>) => {
+          Object.assign(saved.get(id)!, patch);
+          return Promise.resolve({});
+        },
+      } as never,
+      null as never,
+      null as never,
+      null as never,
+    );
+
+    await svc.applyBalances(selected);
+
+    expect(saved.get('selected')?.status).toBe(LoanStatus.CLOSED);
+    expect(saved.get('unrelated')?.status).toBe(LoanStatus.ACTIVE);
+  });
+
+  it('ชำระดอกอย่างเดียวไม่ปิดสัญญาอัตโนมัติ', async () => {
+    const loan = activeLoan({ outstandingPrincipal: 0, arrears: 0 });
+    const svc = new LoansService(
+      {
+        update: (_id: string, patch: Partial<Loan>) => {
+          Object.assign(loan, patch);
+          return Promise.resolve({});
+        },
+      } as never,
+      null as never,
+      null as never,
+      null as never,
+    );
+
+    await svc.applyBalances(loan, false);
+
+    expect(loan.status).toBe(LoanStatus.ACTIVE);
   });
 });
 

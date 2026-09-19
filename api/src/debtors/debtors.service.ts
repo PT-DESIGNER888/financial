@@ -36,7 +36,9 @@ export class DebtorsService {
     debtor.loans = await Promise.all(
       debtor.loans.map((l) => this.loansService.accrue(l)),
     );
-    return debtor;
+    return Object.assign(debtor, {
+      financialSummary: this.loansService.debtorFinancialSummary(debtor.loans),
+    });
   }
 
   create(input: {

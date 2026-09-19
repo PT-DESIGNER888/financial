@@ -28,6 +28,18 @@ export interface RecordPaymentInput {
   note?: string;
 }
 
+export function payoffAmount(input: {
+  interestRemaining: number;
+  arrearsDue: number;
+  principalBalance: number;
+}): number {
+  return round2(
+    Math.max(0, input.interestRemaining) +
+      Math.max(0, input.arrearsDue) +
+      Math.max(0, input.principalBalance),
+  );
+}
+
 /**
  * จัดสรรเงินที่รับมาเข้า ดอกรอบนี้ → ค้างเก่า → ตัดต้น
  *
@@ -97,6 +109,7 @@ export class PaymentsService {
     amount: number,
     paymentType: PaymentType = PaymentType.BOTH,
     interestDueOverride?: number,
+    paidDate?: string,
   ) {
     const loan = await this.loansService.findOneForSuggest(loanId);
     // ยอดหนี้สูญที่เก็บคืนได้ทีหลัง รับเป็นเงินก้อนเดียวเหมือนยอดตาย (หักยอดขาดทุนลง)
@@ -134,18 +147,24 @@ export class PaymentsService {
       : interestDueOverride !== undefined && cur
         ? round2(interestDueOverride)
         : (cur?.interestDue ?? 0);
-    const interestRemaining = apptOpen
-      ? Math.max(
-          0,
-          round2(
-            (interestDueOverride !== undefined
-              ? round2(interestDueOverride)
-              : appt.agreedAmount) - appt.paid,
-          ),
-        )
-      : cur
-        ? Math.max(0, round2(cycleDue - cur.interestPaid))
-        : 0;
+    // รับจากหน้าเก็บย้อนหลัง: รอบนั้นถูก accrue เป็นค้างไปแล้ว จึงต้องหัก arrears
+    // ไม่ใช่ไปจ่ายดอกรอบปัจจุบันซ้ำ (paidDate ถูกส่งจากวันที่ผู้ใช้เลือกในหน้าเก็บ)
+    const historicalCollection =
+      !!paidDate && paidDate < todayStr() && loan.arrears > 0;
+    const interestRemaining = historicalCollection
+      ? 0
+      : apptOpen
+        ? Math.max(
+            0,
+            round2(
+              (interestDueOverride !== undefined
+                ? round2(interestDueOverride)
+                : appt.agreedAmount) - appt.paid,
+            ),
+          )
+        : cur
+          ? Math.max(0, round2(cycleDue - cur.interestPaid))
+          : 0;
     const arrearsDue = loan.arrears;
     const principalBalance = loan.outstandingPrincipal;
 
@@ -251,6 +270,8 @@ export class PaymentsService {
         input.loanId,
         input.amount,
         paymentType ?? PaymentType.BOTH,
+        undefined,
+        input.paidDate,
       );
       arrearsPaid = s.arrearsPaid;
       interestPaid = s.interestPaid;
@@ -338,7 +359,10 @@ export class PaymentsService {
       note: input.note ?? null,
     });
     await this.payments.save(payment);
-    await this.loansService.applyBalances(loan);
+    await this.loansService.applyBalances(
+      loan,
+      paymentType !== PaymentType.INTEREST,
+    );
     if (!frozen && loan.status === LoanStatus.ACTIVE) {
       const fresh = await this.loansService.findOne(loan.id);
       const appt = this.loansService.interestAppointmentQuote(fresh);
@@ -354,6 +378,74 @@ export class PaymentsService {
       }
     }
     return payment;
+  }
+
+  /** ยอดปิดสัญญาปกติที่เลือก — ดอกรอบปัจจุบันที่ยังขาด + ค้างเก่า + ต้นคงเหลือ */
+  async payoffQuote(loanIds: string[]) {
+    const ids = [...new Set(loanIds.filter(Boolean))];
+    if (ids.length === 0)
+      throw new BadRequestException('เลือกอย่างน้อย 1 สัญญา');
+
+    const items = [];
+    let debtorId: string | null = null;
+    for (const id of ids) {
+      const loan = await this.loansService.findOne(id);
+      if (loan.status !== LoanStatus.ACTIVE)
+        throw new BadRequestException(
+          'รับปิดยอดได้เฉพาะสัญญาปกติที่ยังเปิดอยู่',
+        );
+      if (debtorId && loan.debtorId !== debtorId)
+        throw new BadRequestException(
+          'สัญญาที่เลือกต้องเป็นของลูกหนี้คนเดียวกัน',
+        );
+      debtorId = loan.debtorId;
+
+      const allocation = await this.suggestAllocation(
+        id,
+        1e12,
+        PaymentType.BOTH,
+      );
+      const interestRemaining = allocation.interestDue ?? 0;
+      const arrearsDue = allocation.arrearsDue ?? 0;
+      const principalBalance = allocation.principalBalance ?? 0;
+      items.push({
+        loanId: loan.id,
+        contractNumber: loan.contractNumber,
+        interestRemaining,
+        arrearsDue,
+        principalBalance,
+        total: payoffAmount({
+          interestRemaining,
+          arrearsDue,
+          principalBalance,
+        }),
+      });
+    }
+
+    return {
+      debtorId,
+      items,
+      total: round2(items.reduce((sum, item) => sum + item.total, 0)),
+    };
+  }
+
+  /** รับยอดปิดเต็มตามยอดล่าสุดของแต่ละสัญญา แล้วให้ applyBalances ปิดเฉพาะก้อนที่จ่ายครบ */
+  async payoff(loanIds: string[], paidDate?: string) {
+    const quote = await this.payoffQuote(loanIds);
+    const payments: Payment[] = [];
+    for (const item of quote.items) {
+      if (item.total <= 0) continue;
+      payments.push(
+        await this.record({
+          loanId: item.loanId,
+          paidDate,
+          amount: item.total,
+          paymentType: PaymentType.BOTH,
+          note: 'รับปิดยอด',
+        }),
+      );
+    }
+    return { ...quote, payments };
   }
 
   /**

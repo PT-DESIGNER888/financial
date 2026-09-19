@@ -51,7 +51,15 @@ export interface Debtor {
   guarantorPhone: string | null;
   emergencyContacts: EmergencyContact[] | null;
   loans?: Loan[];
+  financialSummary?: DebtorFinancialSummary;
   createdAt: string;
+}
+
+export interface DebtorFinancialSummary {
+  principalIssued: number;
+  remainingPrincipal: number;
+  interestReceived: number;
+  currentOverdue: number;
 }
 
 export interface EmergencyContact {
@@ -96,6 +104,7 @@ export interface Loan {
   cycle: LoanCycle;
   interestMode: InterestMode;
   fromCapital: boolean;
+  capitalDisbursed: number | null;
   principalOriginal: number;
   outstandingPrincipal: number;
   interestRatePercent: number;

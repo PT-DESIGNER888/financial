@@ -69,6 +69,24 @@ export type LoanListPage = {
   overdueCount: number;
 };
 
+/** รวมเฉพาะดอกที่จ่ายในช่วงของรอบนั้น เพื่อไม่ให้ยอดจากรอบอื่นถูกนับซ้ำ/ตกหล่น */
+export function validInterestPaidForDue(
+  payments: Pick<Payment, 'onDeadLoan' | 'paidDate' | 'interestPaid'>[],
+  windowStart: string,
+  dueDate: string,
+): number {
+  return round2(
+    payments
+      .filter(
+        (p) =>
+          !p.onDeadLoan &&
+          diffDays(windowStart, p.paidDate) > 0 &&
+          diffDays(p.paidDate, dueDate) >= 0,
+      )
+      .reduce((sum, p) => sum + p.interestPaid, 0),
+  );
+}
+
 @Injectable()
 export class LoansService {
   constructor(
@@ -223,21 +241,18 @@ export class LoansService {
     const windowStart =
       idx > 0 ? rows[idx - 1].dueDate : addDays(loan.startDate, -1);
     const interestDue = this.cycleInterest(loan, row);
-    const interestPaid = (loan.payments ?? [])
-      .filter(
-        (p) =>
-          !p.onDeadLoan &&
-          diffDays(windowStart, p.paidDate) > 0 &&
-          diffDays(p.paidDate, row.dueDate) >= 0,
-      )
-      .reduce((s, p) => s + p.interestPaid, 0);
+    const interestPaid = validInterestPaidForDue(
+      loan.payments ?? [],
+      windowStart,
+      row.dueDate,
+    );
     return {
       cycleId: row.id,
       dueDate: row.dueDate,
       computedInterest: this.interestPerCycle(loan),
       interestOverride: row.interestOverride,
       interestDue,
-      interestPaid: round2(interestPaid),
+      interestPaid,
       interestRemaining: Math.max(0, round2(interestDue - interestPaid)),
     };
   }
@@ -266,17 +281,14 @@ export class LoansService {
       windowStart =
         idx > 0 ? rows[idx - 1].dueDate : addDays(loan.startDate, -1);
     }
-    const interestPaid = (loan.payments ?? [])
-      .filter(
-        (p) =>
-          !p.onDeadLoan &&
-          diffDays(windowStart, p.paidDate) > 0 &&
-          diffDays(p.paidDate, d) >= 0,
-      )
-      .reduce((s, p) => s + p.interestPaid, 0);
+    const interestPaid = validInterestPaidForDue(
+      loan.payments ?? [],
+      windowStart,
+      d,
+    );
     return {
       interestDue,
-      interestPaid: round2(interestPaid),
+      interestPaid,
       interestRemaining: Math.max(0, round2(interestDue - interestPaid)),
     };
   }
@@ -627,14 +639,11 @@ export class LoansService {
       const windowStart =
         idx > 0 ? sorted[idx - 1].dueDate : addDays(loan.startDate, -1);
       const due = this.cycleInterest(loan, row);
-      const paidInCycle = payments
-        .filter(
-          (p) =>
-            !p.onDeadLoan &&
-            diffDays(windowStart, p.paidDate) > 0 &&
-            diffDays(p.paidDate, row.dueDate) >= 0,
-        )
-        .reduce((s, p) => s + p.interestPaid, 0);
+      const paidInCycle = validInterestPaidForDue(
+        payments,
+        windowStart,
+        row.dueDate,
+      );
       const unpaid = Math.max(0, round2(due - paidInCycle));
       row.accrued = true;
       row.accruedAmount = unpaid;
@@ -682,16 +691,7 @@ export class LoansService {
     );
     const groupDue =
       loan.interestDueAmount != null ? loan.interestDueAmount : computed;
-    const groupPaid = round2(
-      payments
-        .filter(
-          (p) =>
-            !p.onDeadLoan &&
-            diffDays(windowStart, p.paidDate) > 0 &&
-            diffDays(p.paidDate, apptDate) >= 0,
-        )
-        .reduce((s, p) => s + p.interestPaid, 0),
-    );
+    const groupPaid = validInterestPaidForDue(payments, windowStart, apptDate);
     const { addedArrears, patches } = settleAppointmentGroup({
       covered: covered.map((r) => ({
         id: r.id,
@@ -992,6 +992,62 @@ export class LoansService {
       overdue,
       startDate: loan.startDate,
       note: loan.note,
+    };
+  }
+
+  /** ตัวเลขสรุปของลูกหนี้จากสัญญาและประวัติรับเงินจริงที่โหลดมาแล้ว */
+  debtorFinancialSummary(loans: Loan[]) {
+    const open = loans.filter(
+      (loan) =>
+        loan.status === LoanStatus.ACTIVE ||
+        loan.status === LoanStatus.DEAD ||
+        loan.status === LoanStatus.INSTALLMENT,
+    );
+    const principalIssued = round2(
+      loans.reduce(
+        (sum, loan) => sum + (loan.capitalDisbursed ?? loan.principalOriginal),
+        0,
+      ),
+    );
+    const remainingPrincipal = round2(
+      open.reduce((sum, loan) => {
+        if (loan.status === LoanStatus.DEAD) {
+          return (
+            sum + Math.min(loan.outstandingPrincipal, loan.deadBalance ?? 0)
+          );
+        }
+        return sum + loan.outstandingPrincipal;
+      }, 0),
+    );
+    const interestReceived = round2(
+      loans.reduce(
+        (sum, loan) =>
+          sum +
+          (loan.payments ?? []).reduce(
+            (paid, payment) =>
+              paid + payment.interestPaid + payment.arrearsPaid,
+            0,
+          ),
+        0,
+      ),
+    );
+    const currentOverdue = round2(
+      open.reduce((sum, loan) => {
+        if (loan.status === LoanStatus.ACTIVE) return sum + loan.arrears;
+        if (loan.status === LoanStatus.INSTALLMENT) {
+          const schedule = this.buildInstallmentSchedule(loan);
+          return (
+            sum + splitInstallmentDue(schedule?.rows ?? [], todayStr()).overdue
+          );
+        }
+        return sum;
+      }, 0),
+    );
+    return {
+      principalIssued,
+      remainingPrincipal,
+      interestReceived,
+      currentOverdue,
     };
   }
 
@@ -1445,7 +1501,7 @@ export class LoansService {
   }
 
   /** อัปเดตยอดเงินหลังรับชำระ/ลบรายการ แล้วปิด-เปิดยอดตามสถานะจริง */
-  async applyBalances(loan: Loan): Promise<Loan> {
+  async applyBalances(loan: Loan, allowClose = true): Promise<Loan> {
     // หนี้สูญ: ตรึงยอดไว้เป็นผลขาดทุน ไม่ auto ปิด/เปิดตามยอด
     if (loan.status === LoanStatus.BAD_DEBT) {
       await this.loans.update(loan.id, {
@@ -1461,7 +1517,7 @@ export class LoansService {
       ? (loan.deadBalance ?? 0) <= 0
       : loan.outstandingPrincipal <= 0 && loan.arrears <= 0;
 
-    if (settled && loan.status !== LoanStatus.CLOSED) {
+    if (settled && allowClose && loan.status !== LoanStatus.CLOSED) {
       loan.status = LoanStatus.CLOSED;
       loan.closedAt = todayStr();
     } else if (!settled && loan.status === LoanStatus.CLOSED) {

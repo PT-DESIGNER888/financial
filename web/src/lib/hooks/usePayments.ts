@@ -24,13 +24,23 @@ export function useSuggestAllocation(
   enabled: boolean,
   paymentType: PaymentType = 'BOTH',
   interestDue?: number,
+  paidDate?: string,
 ) {
   return useQuery({
-    queryKey: ['payments', 'suggest', loanId, amount, paymentType, interestDue],
+    queryKey: [
+      'payments',
+      'suggest',
+      loanId,
+      amount,
+      paymentType,
+      interestDue,
+      paidDate,
+    ],
     queryFn: () =>
       api<Allocation>(
         `/payments/suggest?loanId=${loanId}&amount=${amount}&type=${paymentType}` +
-          (interestDue !== undefined ? `&interestDue=${interestDue}` : ''),
+          (interestDue !== undefined ? `&interestDue=${interestDue}` : '') +
+          (paidDate ? `&paidDate=${paidDate}` : ''),
       ),
     enabled: enabled && amount > 0,
     staleTime: 10_000,
@@ -71,7 +81,11 @@ export interface PrepayQuote {
   cycles: { dueDate: string; interest: number }[];
 }
 
-export function usePrepayQuote(loanId: string, count: number, enabled: boolean) {
+export function usePrepayQuote(
+  loanId: string,
+  count: number,
+  enabled: boolean,
+) {
   return useQuery({
     queryKey: ['payments', 'prepay-quote', loanId, count],
     queryFn: () =>
@@ -101,6 +115,46 @@ export function useDeletePayment() {
   return useMutation({
     mutationFn: (id: string) =>
       api<void>(`/payments/${id}`, { method: 'DELETE' }),
+    onSuccess: () => invalidateAfterPayment(qc),
+  });
+}
+
+export interface PayoffQuoteItem {
+  loanId: string;
+  contractNumber: string | null;
+  interestRemaining: number;
+  arrearsDue: number;
+  principalBalance: number;
+  total: number;
+}
+
+export interface PayoffQuote {
+  debtorId: string | null;
+  items: PayoffQuoteItem[];
+  total: number;
+}
+
+export function usePayoffQuote(loanIds: string[], enabled: boolean) {
+  return useQuery({
+    queryKey: ['payments', 'payoff-quote', ...loanIds],
+    queryFn: () =>
+      api<PayoffQuote>('/payments/payoff-quote', {
+        method: 'POST',
+        body: JSON.stringify({ loanIds }),
+      }),
+    enabled: enabled && loanIds.length > 0,
+    staleTime: 0,
+  });
+}
+
+export function usePayoff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { loanIds: string[]; paidDate?: string }) =>
+      api<PayoffQuote & { payments: Payment[] }>('/payments/payoff', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
     onSuccess: () => invalidateAfterPayment(qc),
   });
 }

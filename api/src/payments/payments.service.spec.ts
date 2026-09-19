@@ -1,5 +1,10 @@
 import { PaymentType } from '../common/enums';
-import { allocatePayment } from './payments.service';
+import { LoanStatus } from '../common/enums';
+import {
+  PaymentsService,
+  allocatePayment,
+  payoffAmount,
+} from './payments.service';
 
 const alloc = (
   amount: number,
@@ -97,5 +102,83 @@ describe('allocatePayment — ดอกรอบนี้ก่อน แล้�
       arrears += unpaidThisCycle;
     }
     expect(arrears).toBe(500);
+  });
+});
+
+describe('payoffAmount', () => {
+  it('รวมเฉพาะดอกที่ยังขาด + ค้างเก่า + ต้นคงเหลือ', () => {
+    expect(
+      payoffAmount({
+        interestRemaining: 300,
+        arrearsDue: 1_000,
+        principalBalance: 5_000,
+      }),
+    ).toBe(6_300);
+  });
+
+  it('ยอดติดลบจากการปัดเศษไม่ทำให้ยอดปิดลดลง', () => {
+    expect(
+      payoffAmount({
+        interestRemaining: -0.001,
+        arrearsDue: 0,
+        principalBalance: 5_000,
+      }),
+    ).toBe(5_000);
+  });
+});
+
+describe('PaymentsService.suggestAllocation — รับจากหน้าเก็บย้อนหลัง', () => {
+  const service = new PaymentsService(
+    null as never,
+    {
+      findOneForSuggest: () =>
+        Promise.resolve({
+          id: 'L1',
+          debtorId: 'D1',
+          status: LoanStatus.ACTIVE,
+          arrears: 400,
+          outstandingPrincipal: 5_000,
+          interestDueDate: null,
+        }),
+      currentCycleInfo: () => ({
+        cycleId: 'current',
+        dueDate: '2099-01-01',
+        computedInterest: 400,
+        interestOverride: null,
+        interestDue: 400,
+        interestPaid: 0,
+      }),
+      interestAppointmentQuote: () => null,
+    } as never,
+  );
+
+  it('ครบ 400 จ่ายย้อนหลัง 100 → หักค้างเหลือ 300 ไม่ไปลงรอบใหม่', async () => {
+    const result = await service.suggestAllocation(
+      'L1',
+      100,
+      PaymentType.INTEREST,
+      undefined,
+      '2000-01-01',
+    );
+    expect(result).toMatchObject({
+      interestPaid: 0,
+      arrearsPaid: 100,
+      arrearsDue: 400,
+    });
+  });
+
+  it('จ่ายย้อนหลังครบ → หักค้างครบและไม่แตะต้น', async () => {
+    const result = await service.suggestAllocation(
+      'L1',
+      400,
+      PaymentType.INTEREST,
+      undefined,
+      '2000-01-01',
+    );
+    expect(result).toMatchObject({
+      interestPaid: 0,
+      arrearsPaid: 400,
+      principalPaid: 0,
+    });
   });
 });

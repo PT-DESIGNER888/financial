@@ -4,12 +4,14 @@ import { use, useState } from 'react';
 import Link from 'next/link';
 import { AuthGate } from '@/components/auth-gate';
 import { BackButton } from '@/components/back-button';
+import { Button } from '@/components/form';
 import {
   IconEdit,
   IconFacebook,
   IconMessage,
   IconPhone,
   IconPlus,
+  IconReceive,
   IconTrash,
 } from '@/components/icons';
 import { PaymentModal } from '@/components/payment-modal';
@@ -26,6 +28,7 @@ import { EditDebtorModal } from './_components/edit-debtor-modal';
 import { EditLoanModal } from './_components/edit-loan-modal';
 import { facebookDisplayName, resolveContacts } from './_components/helpers';
 import { LoanCard } from './_components/loan-card';
+import { PayoffModal } from './_components/payoff-modal';
 import { ReasonModal } from './_components/reason-modal';
 import { RefinanceModal } from './_components/refinance-modal';
 import { DebtorSummaryStrip } from './_components/summary-strip';
@@ -52,6 +55,7 @@ function DebtorView({ id }: { id: string }) {
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
   const [adjusting, setAdjusting] = useState<Loan | null>(null);
   const [refinancing, setRefinancing] = useState<Loan | null>(null);
+  const [payoffOpen, setPayoffOpen] = useState(false);
   const [reasonAction, setReasonAction] = useState<{
     loan: Loan;
     kind: 'close' | 'write-off';
@@ -89,6 +93,7 @@ function DebtorView({ id }: { id: string }) {
   const inactive = loans.filter(
     (l) => l.status === LoanStatus.CLOSED || l.status === LoanStatus.BAD_DEBT,
   );
+  const activeLoans = loans.filter((l) => l.status === LoanStatus.ACTIVE);
 
   const lineHref = debtor.lineId
     ? debtor.lineId.startsWith('http')
@@ -251,7 +256,18 @@ function DebtorView({ id }: { id: string }) {
         </section>
       </div>
 
-      <DebtorSummaryStrip loans={loans} />
+      {debtor.financialSummary && (
+        <DebtorSummaryStrip summary={debtor.financialSummary} />
+      )}
+
+      {activeLoans.length > 0 && (
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={() => setPayoffOpen(true)}>
+            <IconReceive className="size-5" />
+            รับปิดยอด ({activeLoans.length})
+          </Button>
+        </div>
+      )}
 
       {open.map((loan) => (
         <LoanCard
@@ -370,6 +386,14 @@ function DebtorView({ id }: { id: string }) {
           kind={reasonAction.kind}
           onClose={() => setReasonAction(null)}
           onSaved={() => setReasonAction(null)}
+        />
+      )}
+      {payoffOpen && (
+        <PayoffModal
+          debtorName={debtor.name}
+          loans={activeLoans}
+          onClose={() => setPayoffOpen(false)}
+          onSaved={() => setPayoffOpen(false)}
         />
       )}
     </div>

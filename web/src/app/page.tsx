@@ -189,6 +189,7 @@ function TodayView() {
             paying.item.status === 'INSTALLMENT'
           }
           defaultAmount={paying.item.remainingToday}
+          paidDate={date}
           defaultType={
             paying.item.duePrincipal > 0
               ? PaymentType.BOTH

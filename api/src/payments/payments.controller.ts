@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -56,6 +57,15 @@ class PrepayDto {
   @Type(() => Number) @IsInt() @IsPositive() count: number;
 }
 
+class PayoffDto {
+  @IsArray()
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  loanIds: string[];
+
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) paidDate?: string;
+}
+
 @Controller('payments')
 export class PaymentsController {
   constructor(private payments: PaymentsService) {}
@@ -71,6 +81,7 @@ export class PaymentsController {
     @Query('amount') amount: string,
     @Query('type') type?: string,
     @Query('interestDue') interestDue?: string,
+    @Query('paidDate') paidDate?: string,
   ) {
     const paymentType = PAYMENT_TYPES.includes(type as PaymentTypeDto)
       ? (type as PaymentTypeDto)
@@ -84,6 +95,7 @@ export class PaymentsController {
       parseFloat(amount),
       paymentType,
       Number.isFinite(override) ? override : undefined,
+      paidDate,
     );
   }
 
@@ -97,6 +109,16 @@ export class PaymentsController {
   @Post('prepay')
   prepay(@Body() dto: PrepayDto) {
     return this.payments.prepayCycles(dto.loanId, dto.count);
+  }
+
+  @Post('payoff-quote')
+  payoffQuote(@Body() dto: PayoffDto) {
+    return this.payments.payoffQuote(dto.loanIds);
+  }
+
+  @Post('payoff')
+  payoff(@Body() dto: PayoffDto) {
+    return this.payments.payoff(dto.loanIds, dto.paidDate);
   }
 
   @Delete(':id')
