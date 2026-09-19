@@ -311,6 +311,19 @@ export class DashboardService {
             .groupBy('c.loanId')
             .getRawMany<{ loanId: string; dueDate: string }>()
         : Promise.resolve([] as { loanId: string; dueDate: string }[]);
+    // วันย้อนหลังต้องมีรอบก่อนหน้าของ "วันนั้น" เพื่อแบ่งหน้าต่างการจ่ายถูกต้อง
+    // ไม่ใช่ใช้รอบสะสมล่าสุด ณ วันนี้ ซึ่งอาจอยู่หลังวันที่กำลังเปิดดู
+    const previousDuePromise =
+      activeIds.length > 0
+        ? this.cycles
+            .createQueryBuilder('c')
+            .select('c.loanId', 'loanId')
+            .addSelect('MAX(c.dueDate)', 'dueDate')
+            .where('c.loanId IN (:...ids)', { ids: activeIds })
+            .andWhere('c.dueDate < :day', { day })
+            .groupBy('c.loanId')
+            .getRawMany<{ loanId: string; dueDate: string }>()
+        : Promise.resolve([] as { loanId: string; dueDate: string }[]);
     const dayPaysPromise = this.payments.find({
       where: { loanId: In(ids), paidDate: day },
     });
@@ -326,19 +339,29 @@ export class DashboardService {
             .getMany()
         : Promise.resolve([] as LoanCycle[]);
 
-    const [lastAccruedRaw, dayPays, pendingOrDay] = await Promise.all([
-      lastAccruedPromise,
-      dayPaysPromise,
-      pendingOrDayPromise,
-    ]);
+    const [lastAccruedRaw, previousDueRaw, dayPays, pendingOrDay] =
+      await Promise.all([
+        lastAccruedPromise,
+        previousDuePromise,
+        dayPaysPromise,
+        pendingOrDayPromise,
+      ]);
     const lastAccruedDue = new Map(
       lastAccruedRaw.map((r) => [r.loanId, r.dueDate]),
+    );
+    const previousDue = new Map(
+      previousDueRaw.map((r) => [r.loanId, r.dueDate]),
     );
 
     let paymentFloor = day;
     for (const l of loans) {
       if (l.status !== LoanStatus.ACTIVE) continue;
-      const ws = lastAccruedDue.get(l.id) ?? addDays(l.startDate, -1);
+      const candidates = [
+        lastAccruedDue.get(l.id),
+        previousDue.get(l.id),
+        addDays(l.startDate, -1),
+      ].filter((d): d is string => Boolean(d));
+      const ws = candidates.reduce((min, d) => (d < min ? d : min));
       if (ws < paymentFloor) paymentFloor = ws;
     }
 
@@ -354,19 +377,24 @@ export class DashboardService {
             .getMany()
         : Promise.resolve([] as Payment[]);
 
-    const lastDueList = [...lastAccruedDue.entries()];
-    const lastRowsPromise =
-      activeIds.length > 0 && lastDueList.length > 0
+    const contextDueList = [
+      ...lastAccruedDue.entries(),
+      ...previousDue.entries(),
+    ].filter(
+      ([loanId, dueDate], index, rows) =>
+        rows.findIndex(([l, d]) => l === loanId && d === dueDate) === index,
+    );
+    const contextRowsPromise =
+      activeIds.length > 0 && contextDueList.length > 0
         ? this.cycles
             .createQueryBuilder('c')
             .where('c.loanId IN (:...ids)', { ids: activeIds })
-            .andWhere('c.accrued = :yes', { yes: true })
             .andWhere(
-              lastDueList
+              contextDueList
                 .map((_, i) => `(c.loanId = :lid${i} AND c.dueDate = :ld${i})`)
                 .join(' OR '),
               Object.fromEntries(
-                lastDueList.flatMap(([lid, d], i) => [
+                contextDueList.flatMap(([lid, d], i) => [
                   [`lid${i}`, lid],
                   [`ld${i}`, d],
                 ]),
@@ -375,9 +403,9 @@ export class DashboardService {
             .getMany()
         : Promise.resolve([] as LoanCycle[]);
 
-    const [windowPays, lastRows] = await Promise.all([
+    const [windowPays, contextRows] = await Promise.all([
       windowPaysPromise,
-      lastRowsPromise,
+      contextRowsPromise,
     ]);
 
     const paysByLoan = new Map<string, Payment[]>();
@@ -389,7 +417,7 @@ export class DashboardService {
     for (const p of dayPays) pushPay(p);
     for (const p of windowPays) pushPay(p);
 
-    // cycles: ยังไม่สะสมทั้งก้อน + รอบของวันนั้น + รอบสะสมล่าสุดต่อสัญญา
+    // cycles: ยังไม่สะสมทั้งก้อน + รอบของวันนั้น + รอบอ้างอิงก่อนหน้า
     const cyclesByLoan = new Map<string, LoanCycle[]>();
     if (activeIds.length > 0) {
       const pushCycle = (c: LoanCycle) => {
@@ -398,7 +426,7 @@ export class DashboardService {
         cyclesByLoan.set(c.loanId, arr);
       };
       for (const c of pendingOrDay) pushCycle(c);
-      for (const c of lastRows) pushCycle(c);
+      for (const c of contextRows) pushCycle(c);
     }
 
     for (const loan of loans) {
